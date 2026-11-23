@@ -40,6 +40,8 @@ data class AppColors(
     val onLime: Color,          // dark ink on lime highlight
     val border: Color,          // soft border
     val borderStrong: Color,
+    /** Outline for white buttons so they stand out on the light ground. */
+    val buttonBorder: Color,
     val ink: Color,
     val inkSecondary: Color,
     val inkTertiary: Color,
@@ -72,6 +74,7 @@ val LightColors = AppColors(
     onLime = Color(0xFF1B201C),
     border = Color(0xFFE1E5DC),
     borderStrong = Color(0xFFCCD2C7),
+    buttonBorder = Color(0xFFA9B2A6),
     ink = Color(0xFF1B201C),
     inkSecondary = Color(0xFF525A53),
     inkTertiary = Color(0xFF7B847C),
@@ -101,6 +104,7 @@ val DarkColors = AppColors(
     onLime = Color(0xFF121613),
     border = Color(0xFF2A332D),
     borderStrong = Color(0xFF3D4940),
+    buttonBorder = Color(0xFF56645A),
     ink = Color(0xFFF4F6F2),
     inkSecondary = Color(0xFFB8C0B8),
     inkTertiary = Color(0xFF859086),

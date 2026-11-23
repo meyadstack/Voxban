@@ -5,6 +5,11 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,6 +27,13 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         vm.handleLink(intent?.data)
 
+
+        // Focus mode: pin the app while a session runs, unpin when it ends.
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                vm.state.map { it.activeFocus }.distinctUntilChanged().collect { f -> applyPinning(f?.pinned == true) }
+            }
+        }
 
         setContent {
             val app by vm.state.collectAsState()
@@ -45,6 +57,15 @@ class MainActivity : FragmentActivity() {
         BiometricGate.prompt(this, "Unlock Voxban", "Use your fingerprint, face or screen lock",
             onSuccess = { prompting = false; vm.locked.value = false },
             onFail = { prompting = false })
+    }
+
+    private fun applyPinning(pin: Boolean) {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        val pinned = am?.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE
+        runCatching {
+            if (pin && !pinned) startLockTask()
+            if (!pin && pinned) stopLockTask()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

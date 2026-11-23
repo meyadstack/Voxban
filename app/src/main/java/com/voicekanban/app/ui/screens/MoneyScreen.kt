@@ -109,6 +109,7 @@ fun MoneyScreen(vm: MainViewModel) {
                     ) { Text("− Expense", fontWeight = FontWeight.SemiBold) }
                     Button(
                         onClick = { editing = Transaction(newId("t"), 0.0, TxType.INCOME) }, Modifier.weight(1f).height(48.dp), shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
                         colors = ButtonDefaults.buttonColors(containerColor = c.raised, contentColor = c.ink),
                     ) { Text("+ Income", fontWeight = FontWeight.SemiBold) }
                 }

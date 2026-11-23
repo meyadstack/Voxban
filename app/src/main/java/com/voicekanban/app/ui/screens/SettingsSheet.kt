@@ -140,6 +140,14 @@ fun SettingsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
             }
         }
 
+        SectionLabel("Workout")
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.surface).border(1.dp, c.border, RoundedCornerShape(20.dp)).padding(14.dp),
+        ) {
+            Text("Body weight (for calories): ${s.weightKg.toInt()} kg", style = MaterialTheme.typography.labelLarge, color = c.ink)
+            androidx.compose.material3.Slider(s.weightKg.toFloat(), { v -> vm.updateSettings { it.copy(weightKg = v.toInt().toDouble()) } }, valueRange = 30f..160f)
+        }
+
         SectionLabel("Backup & restore")
         BackupPanel(vm)
 
@@ -153,7 +161,7 @@ fun SettingsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { m -> Chip(m.name.lowercase().replaceFirstChar { it.uppercase() }, Modifier.weight(1f), selected = s.themeMode == m) { vm.updateSettings { it.copy(themeMode = m) } } }
         }
-        Text("Voxban 3.1 · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
+        Text("Voxban 3.2 · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
     }
 }
 

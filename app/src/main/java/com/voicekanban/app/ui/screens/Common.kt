@@ -56,7 +56,7 @@ fun HeaderButton(icon: ImageVector, label: String, active: Boolean = false, enab
     Box(
         Modifier.size(44.dp).clip(CircleShape)
             .background(if (active) c.limeTile else c.raised)
-            .border(1.dp, c.border, CircleShape)
+            .border(1.dp, if (active) Color.Transparent else c.buttonBorder, CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, label, tint = (if (active) c.onLime else c.ink).copy(alpha = if (enabled) 1f else 0.4f), modifier = Modifier.size(20.dp)) }
@@ -68,7 +68,7 @@ fun Pill(label: String, active: Boolean, modifier: Modifier = Modifier, icon: Im
     val bg by animateColorAsState(if (active) c.raised else Color.Transparent, tween(200), label = "pillBg")
     Row(
         modifier.height(38.dp).clip(CircleShape).background(bg)
-            .border(1.dp, if (active) c.border else c.borderStrong, CircleShape)
+            .border(1.dp, c.buttonBorder, CircleShape)
             .clickable(onClick = onClick).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,

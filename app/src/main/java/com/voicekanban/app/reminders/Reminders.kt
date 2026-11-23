@@ -152,5 +152,6 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val s = Repository.get(context).state.value
         Reminders.sync(context, s.workspace, s.settings.remindersEnabled)
+        com.voicekanban.app.fitness.WorkoutReminders.sync(context, s.workoutReminder)
     }
 }

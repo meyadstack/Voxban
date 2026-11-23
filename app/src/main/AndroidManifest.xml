@@ -10,6 +10,15 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Workouts: GPS distance/speed, step counter, keep running with the screen off -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <!-- Focus mode: optional Do Not Disturb -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <queries>
         <intent>
@@ -66,6 +75,14 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Workouts -->
+        <service
+            android:name=".fitness.WorkoutService"
+            android:exported="false"
+            android:foregroundServiceType="location|health" />
+        <receiver android:name=".fitness.WorkoutReminderReceiver" android:exported="false" />
+        <receiver android:name=".focus.FocusEndReceiver" android:exported="false" />
 
         <!-- Deadline reminders -->
         <receiver android:name=".reminders.ReminderReceiver" android:exported="false" />

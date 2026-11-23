@@ -39,7 +39,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class Section { BOARD, ASSISTANT, NOTES, MONEY, VAULT }
+enum class Section { HOME, BOARD, ASSISTANT, WORKOUT, NOTES, MONEY, VAULT, FOCUS }
 
 /** Undo point for an assistant turn. */
 data class Snapshot(
@@ -56,7 +56,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val keys: StateFlow<Map<String, String>> = repo.keys
     val vault: StateFlow<List<PasswordEntry>> = repo.vault
 
-    private val _section = MutableStateFlow(Section.BOARD)
+    private val _section = MutableStateFlow(Section.HOME)
     val section = _section.asStateFlow()
     private val _autoListen = MutableStateFlow(false)
     val autoListen = _autoListen.asStateFlow()
@@ -120,6 +120,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             host.startsWith("notes") -> _section.value = Section.NOTES
             host.startsWith("vault") -> _section.value = Section.VAULT
             host.startsWith("money") -> _section.value = Section.MONEY
+            host.startsWith("home") -> _section.value = Section.HOME
+            host.startsWith("focus") -> _section.value = Section.FOCUS
+            host.startsWith("workout") -> {
+                _section.value = Section.WORKOUT
+                uri.getQueryParameter("start")?.let { id -> state.value.types.firstOrNull { it.id == id }?.let { _pendingWorkout.value = it } }
+            }
             host.startsWith("card") -> {
                 _section.value = Section.BOARD
                 uri.lastPathSegment?.let { id ->
@@ -488,6 +494,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBudget(category: String, limit: Double?) = repo.update { st ->
         st.copy(budgets = st.budgets.filterNot { it.category.equals(category, true) } + listOfNotNull(limit?.takeIf { it > 0 }?.let { com.voicekanban.app.data.Budget(category, it) }))
+    }
+
+    // ------------------------------------------------------------ workouts
+
+    /** A workout the user asked to start from a notification (the screen asks for permissions first). */
+    private val _pendingWorkout = MutableStateFlow<com.voicekanban.app.data.WorkoutType?>(null)
+    val pendingWorkout = _pendingWorkout.asStateFlow()
+    fun requestWorkout(t: com.voicekanban.app.data.WorkoutType?) { _pendingWorkout.value = t }
+
+    fun startWorkout(t: com.voicekanban.app.data.WorkoutType) { _pendingWorkout.value = null; com.voicekanban.app.fitness.WorkoutTracker.start(getApplication(), t) }
+
+    fun stopWorkout(discard: Boolean = false) {
+        val s = com.voicekanban.app.fitness.WorkoutTracker.stop(discard) ?: return
+        val km = s.distanceM / 1000
+        showToast(ToastKind.SUCCESS, "${s.emoji} ${s.name} saved", listOfNotNull(
+            com.voicekanban.app.fitness.WorkoutTracker.formatDuration(s.durationSec * 1000),
+            if (km > 0.01) "%.2f km".format(km) else null,
+            if (s.steps > 0) "${s.steps} steps" else null,
+            "%.0f kcal".format(s.calories),
+        ).joinToString(" · "))
+    }
+
+    fun saveWorkoutType(t: com.voicekanban.app.data.WorkoutType) = repo.update { st ->
+        val list = st.types
+        st.copy(workoutTypes = if (list.any { it.id == t.id }) list.map { if (it.id == t.id) t else it } else list + t)
+    }
+
+    fun deleteWorkoutType(id: String) = repo.update { st -> st.copy(workoutTypes = st.types.filterNot { it.id == id && !it.builtIn }) }
+
+    fun deleteWorkout(id: String) = repo.update { st -> st.copy(workouts = st.workouts.filterNot { it.id == id }) }
+
+    fun setWorkoutReminder(r: com.voicekanban.app.data.WorkoutReminder) = repo.update { it.copy(workoutReminder = r) }
+
+    // ------------------------------------------------------------ focus
+
+    fun startFocus(minutes: Int, pin: Boolean, dnd: Boolean) = com.voicekanban.app.focus.Focus.start(getApplication(), minutes, pin, dnd)
+    fun endFocus(completed: Boolean) = com.voicekanban.app.focus.Focus.end(getApplication(), completed)
+
+    // ------------------------------------------------------------ calendar
+
+    /** Adds a task with a deadline (from the board calendar); reminders follow [remindBeforeMin]. */
+    fun addDatedCard(stageId: String, text: String, dueAt: Long, remindBeforeMin: Int?, priority: Priority = Priority.MEDIUM) {
+        val t = text.trim(); if (t.isEmpty()) return
+        val card = Card(newId("c"), t, priority = priority, dueAt = dueAt, remindBeforeMin = remindBeforeMin)
+        commit("Added “$t” · due ${DateParser.label(dueAt)}", transform = mapBoard { b ->
+            b.copy(stages = b.stages.map { if (it.id == stageId) it.copy(cards = listOf(card) + it.cards) else it })
+        })
+        flash(listOf(card.id))
+    }
+
+    /** Sets or clears a card's deadline and reminder (board calendar). */
+    fun scheduleCard(cardId: String, dueAt: Long?, remindBeforeMin: Int?) {
+        val name = findCard(cardId)?.text ?: return
+        commit(if (dueAt == null) "Removed the date from “$name”" else "“$name” · due ${DateParser.label(dueAt)}", transform = mapBoard { b -> b.mapCard(cardId) { it.copy(dueAt = dueAt, remindBeforeMin = remindBeforeMin) } })
     }
 
     // ------------------------------------------------------------ backup

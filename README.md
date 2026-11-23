@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="docs/screenshots/voice.png" width="220" alt="Voxban voice assistant" />
+  <img src="docs/screenshots/home.png" width="220" alt="Voxban home dashboard" />
 </p>
 
 <h1 align="center">Voxban</h1>
 
 <p align="center">
-  <b>Your tasks, notes, money and passwords — run by a voice assistant that speaks your language.</b><br/>
+  <b>Your tasks, notes, money, workouts and passwords — run by a voice assistant that speaks your language.</b><br/>
   Native Android app · Kotlin + Jetpack Compose · Gemini / ChatGPT / Claude · ElevenLabs voices
 </p>
 
@@ -17,9 +17,13 @@
 
 ---
 
-Voxban is a Kanban board, AI note taker, money manager and password vault in one app — and you can run all of it by talking. Say *“Add call the plumber tomorrow at 10”*, *“I spent 350 on lunch”*, *“Make a note: milk, eggs, dentist Thursday 4pm”* or *“Save my Netflix login with a strong password”*, and the assistant does it — in English, বাংলা, हिन्दी, Español, العربية and 7 more languages, replying in a natural ElevenLabs voice that is native to the language you chose.
+Voxban is a Kanban board with a calendar, AI note taker, money manager, workout tracker, focus timer and password vault in one app, with a dashboard that sums it all up — and you can run all of it by talking. Say *“Add call the plumber tomorrow at 10”*, *“I spent 350 on lunch”*, *“Make a note: milk, eggs, dentist Thursday 4pm”* or *“Save my Netflix login with a strong password”*, and the assistant does it — in English, বাংলা, हिन्दी, Español, العربية and 7 more languages, replying in a natural ElevenLabs voice that is native to the language you chose.
 
 ## 📸 Screenshots
+
+| Home | Dashboard charts | Workout (live) | Focus mode |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/home.png" width="200" /> | <img src="docs/screenshots/home-charts.png" width="200" /> | <img src="docs/screenshots/workout.png" width="200" /> | <img src="docs/screenshots/focus.png" width="200" /> |
 
 | Tasks | Voice AI | Listening | Chat |
 |:---:|:---:|:---:|:---:|
@@ -29,13 +33,19 @@ Voxban is a Kanban board, AI note taker, money manager and password vault in one
 |:---:|:---:|:---:|:---:|
 | <img src="docs/screenshots/notes.png" width="200" /> | <img src="docs/screenshots/note-page.png" width="200" /> | <img src="docs/screenshots/money.png" width="200" /> | <img src="docs/screenshots/vault.png" width="200" /> |
 
-| Welcome | 12 languages |
-|:---:|:---:|
-| <img src="docs/screenshots/onboarding.png" width="200" /> | <img src="docs/screenshots/language.png" width="200" /> |
+| Calendar | Welcome | 12 languages |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/calendar.png" width="200" /> | <img src="docs/screenshots/onboarding.png" width="200" /> | <img src="docs/screenshots/language.png" width="200" /> |
 
 ## ✨ Features
 
-**🗂 Kanban tasks** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget.
+**🏠 Home dashboard** — everything at a glance: open / due-today / overdue tasks, a donut of tasks per stage, what’s coming up, this month’s income vs spending with a category donut and 7-day spending bars, today’s workout ring and weekly active minutes, focus time, notes, budgets and vault — each card opens its section.
+
+**🗂 Kanban tasks + calendar** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with tasks on each day; tap a day to add a task with a time, stage, priority and reminder, or move an unscheduled task onto it.
+
+**🏃 Workouts** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+
+**🧘 Focus mode** — pick 5–180 minutes and Voxban **locks the phone to the app** (Android app pinning) with a calm countdown screen, optionally turning on **Do Not Disturb**. It ends by itself; leaving early takes a deliberate 3-second hold.
 
 **🎙 Voice AI with an interactive avatar** — a friendly character that blinks, follows your finger, giggles when tapped, shows ripples while it listens and moves its mouth with the real voice while it speaks. The same avatar appears in chat and is the app icon.
 
@@ -86,7 +96,16 @@ Without a key Voxban still understands simple task commands offline, but chat, n
 2. In **Chrome** also enable *Settings → Autofill services → Autofill using another service*.
 3. Now, when you sign up on an app or website, Android asks *“Save to Voxban?”*; on sign-in screens, tap the **Voxban** suggestion and confirm with your fingerprint.
 
-### 5. Back up your data
+### 5. Workouts
+1. Open **Workout**, tap a workout (or **+** to create your own), and allow **location** (distance & speed) and **physical activity** (steps) when asked.
+2. Tap ▶ to start; use **Pause** / **Finish**. It keeps tracking with the screen off — the notification shows the live timer.
+3. Tap the 🔔 button to set a **daily reminder** (time, days and workout). Set your body weight in **Settings → Workout** for accurate calories.
+
+### 6. Focus mode
+1. **More → Focus**, choose a length, keep **Lock the phone to Voxban** on, and optionally enable **Do Not Disturb** (Android asks once for permission).
+2. Tap **Start focusing** and confirm **App pinned**. Home, recents and other apps are blocked until the timer ends; hold **Give up** for 3 seconds to stop early.
+
+### 7. Back up your data
 **Settings → Backup & restore → Export data (.json)**. Add a backup password to include your saved logins (you’ll need it to restore them — it can’t be recovered). Keep the file somewhere safe, e.g. Google Drive.
 
 ### Things to say
@@ -95,6 +114,8 @@ Without a key Voxban still understands simple task commands offline, but chat, n
 - “Make a note: groceries milk eggs, call mom Sunday, trip idea hills”
 - “I spent 1,200 on groceries” · “Set food budget to 3,000” · “How much did I spend this month?”
 - “Save my GitHub login, username alex, generate a password” · “Show my Netflix password”
+
+> Workout and focus are started from their screens (they need a tap to grant location / pinning).
 
 ## 🛠 Build from source
 
@@ -123,10 +144,12 @@ Without it the release build is signed with the debug key so it still installs. 
 app/src/main/java/com/voicekanban/app/
   ai/         assistant prompt, action parser, dispatcher, Gemini / OpenAI / Claude clients
   autofill/   Android autofill service (save + suggest logins) and unlock screen
+  fitness/    live workout tracker (GPS, steps, timer), foreground service, daily reminder
+  focus/      focus sessions: app pinning, Do Not Disturb, end alarm
   data/       models, repository (JSON state + encrypted vault), backup format
   reminders/  deadline alarms and notification actions
   security/   biometric lock
-  ui/         Compose screens: tasks, voice AI & chat, notes, money, vault, settings
+  ui/         Compose screens: home dashboard, tasks & calendar, voice AI & chat, workout, notes, money, vault, focus, settings
   voice/      speech recognition and ElevenLabs / phone text-to-speech
   widget/     home-screen widget
 ```

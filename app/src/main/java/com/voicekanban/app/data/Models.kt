@@ -147,6 +147,8 @@ data class Settings(
     val quickActionsEnabled: Boolean = false,
     /** Money manager currency symbol; blank = from the phone's region. */
     val currency: String = "",
+    /** Body weight for calorie estimates. */
+    val weightKg: Double = 70.0,
 ) {
     val appLanguage: AppLanguage get() = AppLanguage.byCode(language)
 
@@ -279,6 +281,79 @@ fun formatMoney(amount: Double, symbol: String): String {
     return "$symbol$n"
 }
 
+// ---------------------------------------------------------------- workouts
+
+/** A kind of workout; built-in ones can be edited, user-made ones deleted. */
+@Serializable
+data class WorkoutType(
+    val id: String,
+    val name: String,
+    val emoji: String,
+    /** Track distance and speed with GPS. */
+    val gps: Boolean = false,
+    /** Count steps with the phone's step sensor. */
+    val steps: Boolean = false,
+    /** Energy cost (MET) used to estimate calories. */
+    val met: Double = 5.0,
+    /** Daily goal in minutes. */
+    val goalMin: Int = 30,
+    val builtIn: Boolean = false,
+)
+
+val DEFAULT_WORKOUT_TYPES: List<WorkoutType> = listOf(
+    WorkoutType("walking", "Walking", "🚶", gps = true, steps = true, met = 3.5, goalMin = 30, builtIn = true),
+    WorkoutType("running", "Running", "🏃", gps = true, steps = true, met = 9.8, goalMin = 25, builtIn = true),
+    WorkoutType("cycling", "Cycling", "🚴", gps = true, met = 7.5, goalMin = 40, builtIn = true),
+    WorkoutType("yoga", "Yoga", "🧘", met = 2.5, goalMin = 20, builtIn = true),
+    WorkoutType("strength", "Strength", "🏋️", met = 5.0, goalMin = 30, builtIn = true),
+    WorkoutType("hiit", "HIIT", "🔥", met = 8.0, goalMin = 20, builtIn = true),
+)
+
+@Serializable
+data class WorkoutSession(
+    val id: String,
+    val typeId: String,
+    val name: String,
+    val emoji: String,
+    val startedAt: Long,
+    val durationSec: Long,
+    val distanceM: Double = 0.0,
+    val steps: Int = 0,
+    val calories: Double = 0.0,
+)
+
+/** Daily "time to move" notification. Days use java.time DayOfWeek values (1 = Monday … 7 = Sunday). */
+@Serializable
+data class WorkoutReminder(
+    val enabled: Boolean = false,
+    val hour: Int = 18,
+    val minute: Int = 0,
+    val days: Set<Int> = setOf(1, 2, 3, 4, 5, 6, 7),
+    val typeId: String = "walking",
+)
+
+/** A focus (phone lock) session. */
+@Serializable
+data class FocusSession(
+    val id: String,
+    val startedAt: Long,
+    val plannedMin: Int,
+    val actualSec: Long,
+    val completed: Boolean,
+)
+
+/** A focus session that is running right now (survives the app being closed). */
+@Serializable
+data class ActiveFocus(
+    val startedAt: Long,
+    val until: Long,
+    val plannedMin: Int,
+    val pinned: Boolean,
+    val dnd: Boolean,
+    /** Interruption filter to restore after Do Not Disturb. */
+    val previousFilter: Int = 1,
+)
+
 @Serializable
 data class AppState(
     val workspace: Workspace,
@@ -293,7 +368,14 @@ data class AppState(
     val notes: List<Note> = emptyList(),
     val transactions: List<Transaction> = emptyList(),
     val budgets: List<Budget> = emptyList(),
+    /** Workout types; empty means the defaults. */
+    val workoutTypes: List<WorkoutType> = emptyList(),
+    val workouts: List<WorkoutSession> = emptyList(),
+    val workoutReminder: WorkoutReminder = WorkoutReminder(),
+    val focusSessions: List<FocusSession> = emptyList(),
+    val activeFocus: ActiveFocus? = null,
 ) {
+    val types: List<WorkoutType> get() = workoutTypes.ifEmpty { DEFAULT_WORKOUT_TYPES }
     val activeSession: ChatSession? get() = sessions.firstOrNull { it.id == activeSessionId }
 }
 

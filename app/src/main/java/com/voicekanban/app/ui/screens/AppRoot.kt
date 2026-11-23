@@ -48,6 +48,11 @@ import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.DirectionsRun
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SpaceDashboard
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.GridView
@@ -99,6 +104,12 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
     if (locked) { LockScreen(onUnlock); return }
     if (!app.settings.onboarded) { OnboardingScreen(vm); return }
 
+    var settingsOpen by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
+
+    // A running focus session takes over the whole screen.
+    app.activeFocus?.let { f -> FocusOverlay(vm, f); return }
+
     // imePadding on the whole content: inputs always sit right above the keyboard.
     Column(Modifier.fillMaxSize().background(c.background).imePadding()) {
         Box(Modifier.weight(1f)) {
@@ -112,43 +123,56 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
                 label = "section",
             ) { s ->
                 when (s) {
+                    Section.HOME -> DashboardScreen(vm, onSettings = { settingsOpen = true })
                     Section.BOARD -> BoardScreen(vm)
                     Section.ASSISTANT -> AssistantScreen(vm)
+                    Section.WORKOUT -> WorkoutScreen(vm)
                     Section.NOTES -> NotesScreen(vm)
                     Section.MONEY -> MoneyScreen(vm)
                     Section.VAULT -> VaultScreen(vm)
+                    Section.FOCUS -> FocusScreen(vm)
                 }
             }
         }
         // Tab bar steps aside while typing.
-        if (!WindowInsets.isImeVisible) TabBar(section) { vm.setSection(it) }
+        if (!WindowInsets.isImeVisible) TabBar(section, onMore = { moreOpen = true }) { vm.setSection(it) }
     }
+    if (moreOpen) MoreSheet(onDismiss = { moreOpen = false }, onSettings = { moreOpen = false; settingsOpen = true }) { moreOpen = false; vm.setSection(it) }
+    if (settingsOpen) SettingsSheet(vm, onDismiss = { settingsOpen = false })
 }
 
+private val MORE_SECTIONS = listOf(
+    Triple(Section.NOTES, "Notes", Icons.AutoMirrored.Rounded.StickyNote2),
+    Triple(Section.MONEY, "Money", Icons.Rounded.AccountBalanceWallet),
+    Triple(Section.VAULT, "Vault", Icons.Rounded.Lock),
+    Triple(Section.FOCUS, "Focus", Icons.Rounded.SelfImprovement),
+)
+
 @Composable
-private fun TabBar(section: Section, onChange: (Section) -> Unit) {
+private fun TabBar(section: Section, onMore: () -> Unit, onChange: (Section) -> Unit) {
     val c = VK.colors
+    val inMore = MORE_SECTIONS.firstOrNull { it.first == section }
     Surface(color = c.background) {
         Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)
-                .clip(CircleShape).background(c.raised).border(1.dp, c.border, CircleShape).padding(5.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp)
+                .clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape).padding(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(
+                Triple(Section.HOME, "Home", Icons.Rounded.SpaceDashboard),
                 Triple(Section.BOARD, "Tasks", Icons.Rounded.GridView),
                 Triple(Section.ASSISTANT, "Voice AI", Icons.Rounded.GraphicEq),
-                Triple(Section.NOTES, "Notes", Icons.AutoMirrored.Rounded.StickyNote2),
-                Triple(Section.MONEY, "Money", Icons.Rounded.AccountBalanceWallet),
-                Triple(Section.VAULT, "Vault", Icons.Rounded.Lock),
+                Triple(Section.WORKOUT, "Workout", Icons.Rounded.DirectionsRun),
+                Triple(null, inMore?.second ?: "More", inMore?.third ?: Icons.Rounded.Apps),
             ).forEach { (s, label, icon) ->
-                val active = s == section
+                val active = if (s == null) inMore != null else s == section
                 val bg by animateColorAsState(if (active) c.limeTile else Color.Transparent, tween(220), label = "tabBg")
                 val fg by animateColorAsState(if (active) c.onLime else c.inkSecondary, tween(220), label = "tabFg")
-                val w by animateFloatAsState(if (active) 2.1f else 1f, spring(dampingRatio = 0.8f, stiffness = 380f), label = "tabW")
+                val w by animateFloatAsState(if (active) 2.2f else 1f, spring(dampingRatio = 0.8f, stiffness = 380f), label = "tabW")
                 Row(
                     Modifier.weight(w).height(48.dp).clip(CircleShape).background(bg)
-                        .clickable { onChange(s) }.padding(horizontal = 8.dp),
+                        .clickable { if (s == null) onMore() else onChange(s) }.padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
@@ -160,6 +184,29 @@ private fun TabBar(section: Section, onChange: (Section) -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MoreSheet(onDismiss: () -> Unit, onSettings: () -> Unit, onPick: (Section) -> Unit) {
+    val c = VK.colors
+    AppSheet("More", onDismiss = onDismiss) {
+        (MORE_SECTIONS.map { Triple<Section?, String, androidx.compose.ui.graphics.vector.ImageVector>(it.first, it.second, it.third) } + Triple(null, "Settings", Icons.Rounded.Settings)).chunked(2).forEach { row ->
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { (s, label, icon) ->
+                    Column(
+                        Modifier.weight(1f).height(96.dp).clip(RoundedCornerShape(22.dp)).background(c.raised).border(1.dp, c.buttonBorder, RoundedCornerShape(22.dp))
+                            .clickable { if (s == null) onSettings() else onPick(s) }.padding(16.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Box(Modifier.size(36.dp).clip(CircleShape).background(c.limeTile), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c.onLime, modifier = Modifier.size(20.dp)) }
+                        Text(label, style = MaterialTheme.typography.titleMedium, color = c.ink)
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -207,7 +254,7 @@ private fun OnboardingScreen(vm: MainViewModel) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (step > 0) {
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(c.raised).clickable { step-- },
+                    Modifier.size(44.dp).clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape).clickable { step-- },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = c.ink, modifier = Modifier.size(20.dp))

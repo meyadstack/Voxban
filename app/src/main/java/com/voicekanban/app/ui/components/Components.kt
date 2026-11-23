@@ -100,7 +100,7 @@ fun Chip(text: String, modifier: Modifier = Modifier, selected: Boolean = false,
     Row(
         modifier.clip(CircleShape)
             .background(bgColor)
-            .border(1.dp, if (selected) (tint ?: c.border) else c.borderStrong, CircleShape)
+            .border(1.dp, if (selected) (tint ?: c.buttonBorder) else c.buttonBorder, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp).height(36.dp),
         verticalAlignment = Alignment.CenterVertically,

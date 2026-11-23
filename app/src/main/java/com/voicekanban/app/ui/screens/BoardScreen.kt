@@ -44,6 +44,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -150,6 +151,7 @@ fun BoardScreen(vm: MainViewModel) {
     var stageFocus by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
+    var calendarOpen by remember { mutableStateOf(false) }
     var command by rememberSaveable { mutableStateOf("") }
 
     val filtering = query.isNotBlank() || priorityFilter != null
@@ -204,6 +206,17 @@ fun BoardScreen(vm: MainViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        item {
+                            // Calendar: see tasks by day, add a task to a day with a reminder.
+                            Row(
+                                Modifier.height(38.dp).clip(CircleShape).background(c.limeTile)
+                                    .clickable { calendarOpen = true }.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Rounded.CalendarMonth, "Calendar", tint = c.onLime, modifier = Modifier.size(17.dp))
+                                Text(" Calendar", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = c.onLime)
+                            }
+                        }
                         items(board.stages.size) { i ->
                             val s = board.stages[i]
                             val active = pager.currentPage == i
@@ -211,7 +224,7 @@ fun BoardScreen(vm: MainViewModel) {
                             Row(
                                 Modifier.height(38.dp).clip(CircleShape)
                                     .background(pillBg)
-                                    .border(1.dp, if (active) c.border else c.borderStrong, CircleShape)
+                                    .border(1.dp, c.buttonBorder, CircleShape)
                                     .clickable { scope.launch { pager.animateScrollToPage(i) } }
                                     .padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -234,7 +247,7 @@ fun BoardScreen(vm: MainViewModel) {
                             Box(
                                 Modifier.size(38.dp).clip(CircleShape)
                                     .background(Color.Transparent)
-                                    .border(1.dp, c.borderStrong, CircleShape)
+                                    .border(1.dp, c.buttonBorder, CircleShape)
                                     .clickable { stageFocus = null; stagesOpen = true },
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -245,7 +258,7 @@ fun BoardScreen(vm: MainViewModel) {
                             Box(
                                 Modifier.size(38.dp).clip(CircleShape)
                                     .background(if (searchOpen) c.limeTile else Color.Transparent)
-                                    .border(1.dp, if (searchOpen) c.onLime.copy(alpha = 0.2f) else c.borderStrong, CircleShape)
+                                    .border(1.dp, if (searchOpen) c.onLime.copy(alpha = 0.2f) else c.buttonBorder, CircleShape)
                                     .clickable {
                                         if (searchOpen) { query = ""; priorityFilter = null }
                                         searchOpen = !searchOpen
@@ -264,7 +277,7 @@ fun BoardScreen(vm: MainViewModel) {
                             Box(
                                 Modifier.size(38.dp).clip(CircleShape)
                                     .background(Color.Transparent)
-                                    .border(1.dp, c.borderStrong, CircleShape)
+                                    .border(1.dp, c.buttonBorder, CircleShape)
                                     .clickable { helpOpen = true },
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -385,6 +398,7 @@ fun BoardScreen(vm: MainViewModel) {
     if (boardsOpen) BoardsSheet(vm, onDismiss = { boardsOpen = false })
     if (stagesOpen) StagesSheet(vm, board, stageFocus, onDismiss = { stagesOpen = false })
     if (settingsOpen) SettingsSheet(vm, onDismiss = { settingsOpen = false })
+    if (calendarOpen) CalendarSheet(vm, board, onDismiss = { calendarOpen = false })
     if (helpOpen) HelpSheet(onDismiss = { helpOpen = false }, onTry = { helpOpen = false; vm.openAssistant(false); vm.sendChat(it) })
 }
 
@@ -394,7 +408,7 @@ private fun HeaderCircleButton(icon: ImageVector, label: String, active: Boolean
     Box(
         Modifier.size(44.dp).clip(CircleShape)
             .background(if (active) c.limeTile else c.raised)
-            .border(1.dp, c.border, CircleShape)
+            .border(1.dp, if (active) Color.Transparent else c.buttonBorder, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, label, tint = if (active) c.onLime else c.ink, modifier = Modifier.size(20.dp)) }
@@ -716,7 +730,7 @@ private fun CommandBar(value: String, onValue: (String) -> Unit, busy: Boolean, 
     Surface(color = c.background) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
-                .clip(CircleShape).background(c.raised).border(1.dp, c.border, CircleShape)
+                .clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

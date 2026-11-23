@@ -107,9 +107,10 @@ fun RestoreButton(vm: MainViewModel, outlined: Boolean, label: String = "Import 
     }
 
     val content: @Composable RowScope.() -> Unit = { Icon(Icons.Rounded.Upload, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(label) }
-    if (outlined) OutlinedButton(onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, Modifier.fillMaxWidth().height(48.dp), shape = CircleShape, content = content)
+    if (outlined) OutlinedButton(onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, Modifier.fillMaxWidth().height(48.dp), shape = CircleShape, border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder), content = content)
     else Button(
         onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, Modifier.fillMaxWidth().height(52.dp), shape = CircleShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
         colors = ButtonDefaults.buttonColors(containerColor = c.raised, contentColor = c.ink), content = content,
     )
 

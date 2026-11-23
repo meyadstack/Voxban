@@ -361,7 +361,7 @@ private fun VoicePane(
                     )
                 }
                 Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(c.raised).border(1.dp, c.border, CircleShape).clickable(onClick = onChat),
+                    Modifier.size(52.dp).clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape).clickable(onClick = onChat),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.Forum, "Open chat", tint = c.ink, modifier = Modifier.size(20.dp)) }
             }
@@ -397,7 +397,7 @@ private fun ChatPane(
                     SUGGESTIONS.forEach { s ->
                         Row(
                             Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.raised)
-                                .border(1.dp, c.border, RoundedCornerShape(18.dp)).clickable { onSend(s) }.padding(14.dp),
+                                .border(1.dp, c.buttonBorder, RoundedCornerShape(18.dp)).clickable { onSend(s) }.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Icons.Rounded.AutoAwesome, null, tint = c.accentText, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(10.dp))
