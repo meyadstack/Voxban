@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Voxban</string>
+    <string name="widget_label">Voxban board</string>
+    <string name="widget_description">Board progress, up-next tasks and a one-tap Talk button</string>
+</resources>
