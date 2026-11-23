@@ -67,14 +67,19 @@ fun DonutChart(values: List<Double>, colors: List<Color>, size: Dp, thickness: D
 /** Progress ring from 0..1. */
 @Composable
 fun ProgressRing(progress: Float, size: Dp, color: Color, thickness: Dp = 10.dp, track: Color = VK.colors.surfaceWell, center: @Composable () -> Unit = {}) {
-    val t = appear(progress)
+    // Glide from the current value to the new one (starting from empty the first time).
+    // Live timers update this several times a second, so it must never restart from zero.
+    val target = progress.coerceIn(0f, 1f)
+    val anim = remember { Animatable(0f) }
+    LaunchedEffect(target) { anim.animateTo(target, tween(if (anim.value == 0f) 800 else 400, easing = FastOutSlowInEasing)) }
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(size)) {
             val stroke = thickness.toPx()
             val inset = stroke / 2
             val s = Size(this.size.width - stroke, this.size.height - stroke)
             drawArc(track, 0f, 360f, false, Offset(inset, inset), s, style = Stroke(stroke))
-            drawArc(color, -90f, 360f * progress.coerceIn(0f, 1f) * t, false, Offset(inset, inset), s, style = Stroke(stroke, cap = StrokeCap.Round))
+            val sweep = 360f * anim.value
+            if (sweep > 0.2f) drawArc(color, -90f, sweep, false, Offset(inset, inset), s, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         center()
     }

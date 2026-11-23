@@ -161,7 +161,7 @@ fun SettingsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { m -> Chip(m.name.lowercase().replaceFirstChar { it.uppercase() }, Modifier.weight(1f), selected = s.themeMode == m) { vm.updateSettings { it.copy(themeMode = m) } } }
         }
-        Text("Voxban 3.2 · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
+        Text("Voxban 3.2.1 · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
     }
 }
 
