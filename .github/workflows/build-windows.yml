@@ -140,12 +140,13 @@ jobs:
             <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
             <key>CFBundleName</key><string>Voxban</string>
             <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>3.4.1</string>
-            <key>CFBundleVersion</key><string>11</string>
+            <key>CFBundleShortVersionString</key><string>3.4.2</string>
+            <key>CFBundleVersion</key><string>12</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
             <key>NSHighResolutionCapable</key><true/>
             <key>NSLocalNetworkUsageDescription</key><string>Voxban uses your local Wi-Fi network to pair and sync with the Voxban Android app.</string>
             <key>NSMicrophoneUsageDescription</key><string>Voxban uses your microphone for Voice AI commands.</string>
+            <key>NSFaceIDUsageDescription</key><string>Voxban uses Touch ID or biometrics to unlock your encrypted Password Vault.</string>
           </dict>
           </plist>
           PLIST

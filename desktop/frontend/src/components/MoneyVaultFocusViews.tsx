@@ -4,6 +4,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Fingerprint,
   KeyRound,
   Lock,
   Plus,
@@ -13,7 +14,7 @@ import {
   Trash2,
   Unlock,
 } from "lucide-react";
-import { api } from "../api";
+import { api, type BiometricStatus } from "../api";
 import type { AppState, PasswordEntry, Transaction, TxType } from "../types";
 import { formatDuration, newId } from "../types";
 
@@ -161,6 +162,14 @@ export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState
 
 export function VaultView() {
   const [exists, setExists] = useState<boolean | null>(null);
+  const [biometric, setBiometric] = useState<BiometricStatus>({
+    available: false,
+    enrolled: false,
+    label: "Fingerprint",
+  });
+  const [enrollOnUnlock, setEnrollOnUnlock] = useState(true);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioNotice, setBioNotice] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [entries, setEntries] = useState<PasswordEntry[]>([]);
@@ -174,28 +183,101 @@ export function VaultView() {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    void api.vaultStatus().then((r) => setExists(r.exists)).catch(() => setExists(false));
+    void api
+      .vaultStatus()
+      .then((r) => {
+        setExists(r.exists);
+        if (r.biometric) {
+          setBiometric(r.biometric);
+          setEnrollOnUnlock(!r.exists && r.biometric.available);
+        }
+      })
+      .catch(() => setExists(false));
   }, []);
 
   const unlock = async () => {
     if (!passphrase.trim()) return;
     setError(null);
+    setBioNotice(null);
+    const shouldEnroll = biometric.available && !biometric.enrolled && enrollOnUnlock;
+    if (shouldEnroll) setBioBusy(true);
     try {
-      const res = await api.vaultUnlock(passphrase);
+      const res = await api.vaultUnlock(passphrase, shouldEnroll);
       if (res.ok) {
         setEntries(res.entries || []);
         setUnlocked(true);
+        setExists(true);
+        if (res.biometric) setBiometric(res.biometric);
+        if (res.biometricWarning) {
+          setBioNotice(res.biometricWarning);
+        } else if (shouldEnroll && res.biometric?.enrolled) {
+          setBioNotice(`${res.biometric.label} enabled for this vault.`);
+        }
       } else {
         setError(res.error || "Wrong master password.");
       }
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBioBusy(false);
     }
+  };
+
+  const unlockWithBiometric = async () => {
+    setError(null);
+    setBioNotice(null);
+    setBioBusy(true);
+    try {
+      const res = await api.vaultBiometricUnlock();
+      if (res.ok) {
+        setEntries(res.entries || []);
+        setUnlocked(true);
+        setPassphrase("");
+        if (res.biometric) setBiometric(res.biometric);
+      } else {
+        if (res.biometric) setBiometric(res.biometric);
+        setError(res.error || `${biometric.label} unlock failed.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBioBusy(false);
+    }
+  };
+
+  const toggleBiometric = async () => {
+    setError(null);
+    setBioNotice(null);
+    setBioBusy(true);
+    try {
+      if (biometric.enrolled) {
+        const res = await api.vaultBiometricDisable();
+        if (res.biometric) setBiometric(res.biometric);
+        setBioNotice(`${biometric.label} unlock disabled for this PC.`);
+      } else {
+        const res = await api.vaultBiometricEnable(passphrase || undefined);
+        if (res.biometric) setBiometric(res.biometric);
+        setBioNotice(`${res.biometric?.label || biometric.label} unlock enabled!`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBioBusy(false);
+    }
+  };
+
+  const lockVault = async () => {
+    await api.vaultLock().catch(() => {});
+    setUnlocked(false);
+    setEntries([]);
+    setPassphrase("");
+    setError(null);
+    setBioNotice(null);
   };
 
   const persist = async (next: PasswordEntry[]) => {
     setEntries(next);
-    await api.vaultSave(passphrase, next);
+    await api.vaultSave(next, passphrase || undefined);
     setExists(true);
   };
 
@@ -220,17 +302,39 @@ export function VaultView() {
   };
 
   if (!unlocked) {
+    const canQuickBioUnlock = Boolean(exists && biometric.available && biometric.enrolled);
     return (
       <div className="max-w-md mx-auto vk-card p-6 space-y-4 mt-8 text-center">
         <div className="w-14 h-14 mx-auto rounded-full bg-[#EAFF87] text-[#1B201C] flex items-center justify-center">
-          <Lock className="w-6 h-6" />
+          {canQuickBioUnlock ? <Fingerprint className="w-7 h-7" /> : <Lock className="w-6 h-6" />}
         </div>
         <h2 className="text-xl font-bold">Encrypted Password Vault</h2>
         <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
           {exists
-            ? "Enter your master password to decrypt your AES-256-GCM vault."
+            ? canQuickBioUnlock
+              ? `Use ${biometric.label} or your master password to decrypt your AES-256-GCM vault.`
+              : "Enter your master password to decrypt your AES-256-GCM vault."
             : "Choose a master password to create your local AES-256-GCM encrypted vault."}
         </p>
+
+        {canQuickBioUnlock && (
+          <>
+            <button
+              onClick={() => void unlockWithBiometric()}
+              disabled={bioBusy}
+              className="vk-btn-lime w-full py-3 text-sm font-semibold cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <Fingerprint className="w-5 h-5" />
+              {bioBusy ? `Waiting for ${biometric.label}…` : `Unlock with ${biometric.label}`}
+            </button>
+            <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--vk-ink-3)" }}>
+              <span className="h-px flex-1" style={{ background: "var(--vk-border)" }} />
+              <span>or use master password</span>
+              <span className="h-px flex-1" style={{ background: "var(--vk-border)" }} />
+            </div>
+          </>
+        )}
+
         <input
           type="password"
           value={passphrase}
@@ -241,9 +345,32 @@ export function VaultView() {
           placeholder="Master password"
           className="w-full vk-well px-4 py-2.5 text-sm border-0 outline-none"
         />
+
+        {biometric.available && !biometric.enrolled && (
+          <label
+            className="flex items-center justify-center gap-2 text-xs cursor-pointer select-none py-1"
+            style={{ color: "var(--vk-ink-2)" }}
+          >
+            <input
+              type="checkbox"
+              checked={enrollOnUnlock}
+              onChange={(e) => setEnrollOnUnlock(e.target.checked)}
+              className="rounded cursor-pointer"
+            />
+            <Fingerprint className="w-3.5 h-3.5" style={{ color: "var(--vk-accent)" }} />
+            <span>Enable {biometric.label} unlock on this PC</span>
+          </label>
+        )}
+
         {error && <div className="text-xs" style={{ color: "var(--vk-danger)" }}>{error}</div>}
-        <button onClick={() => void unlock()} className="vk-btn-lime w-full py-2.5 text-sm cursor-pointer inline-flex items-center justify-center gap-2">
-          <Unlock className="w-4 h-4" /> {exists ? "Unlock Vault" : "Create & Unlock"}
+
+        <button
+          onClick={() => void unlock()}
+          disabled={bioBusy}
+          className={`${canQuickBioUnlock ? "vk-btn-outline" : "vk-btn-lime"} w-full py-2.5 text-sm cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60`}
+        >
+          <Unlock className="w-4 h-4" />{" "}
+          {bioBusy ? `Verifying ${biometric.label}…` : exists ? "Unlock Vault" : "Create & Unlock"}
         </button>
       </div>
     );
@@ -251,22 +378,45 @@ export function VaultView() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" style={{ color: "var(--vk-low)" }} />
           <h2 className="text-2xl font-bold tracking-tight">Password Vault</h2>
         </div>
-        <button
-          onClick={() => {
-            setUnlocked(false);
-            setEntries([]);
-            setPassphrase("");
-          }}
-          className="vk-btn-outline px-4 py-1.5 text-xs cursor-pointer"
-        >
-          Lock Vault
-        </button>
+        <div className="flex items-center gap-2">
+          {biometric.available && (
+            <button
+              onClick={() => void toggleBiometric()}
+              disabled={bioBusy}
+              className={`${biometric.enrolled ? "vk-btn-lime" : "vk-btn-outline"} px-3.5 py-1.5 text-xs cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60`}
+              title={biometric.enrolled ? `Click to turn off ${biometric.label}` : `Turn on ${biometric.label} unlock`}
+            >
+              <Fingerprint className="w-3.5 h-3.5" />
+              {bioBusy
+                ? "Verifying…"
+                : biometric.enrolled
+                ? `${biometric.label} Active`
+                : `Enable ${biometric.label}`}
+            </button>
+          )}
+          <button
+            onClick={() => void lockVault()}
+            className="vk-btn-outline px-4 py-1.5 text-xs cursor-pointer"
+          >
+            Lock Vault
+          </button>
+        </div>
       </div>
+
+      {(bioNotice || error) && (
+        <div
+          className="vk-card px-4 py-2.5 text-xs flex items-center gap-2"
+          style={{ color: error ? "var(--vk-danger)" : "var(--vk-ink)" }}
+        >
+          <Fingerprint className="w-4 h-4 shrink-0" style={{ color: error ? "var(--vk-danger)" : "var(--vk-low)" }} />
+          <span>{error || bioNotice}</span>
+        </div>
+      )}
 
       <div className="vk-card p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Site / App" className="vk-well px-3 py-2 text-sm border-0 outline-none" />

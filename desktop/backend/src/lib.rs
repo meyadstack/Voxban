@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod biometrics;
 pub mod models;
 pub mod music;
 pub mod routes;
@@ -116,9 +117,9 @@ mod tests {
 
     #[test]
     fn semver_updater_compares_correctly() {
-        assert!(is_newer_version("v3.5.0", "3.4.1"));
-        assert!(!is_newer_version("v3.4.1", "3.4.1"));
-        assert!(!is_newer_version("3.3.0", "3.4.1"));
+        assert!(is_newer_version("v3.5.0", "3.4.2"));
+        assert!(!is_newer_version("v3.4.2", "3.4.2"));
+        assert!(!is_newer_version("3.3.0", "3.4.2"));
     }
 
     #[test]
@@ -199,6 +200,30 @@ mod tests {
         let decoded = storage.unlock_vault("master-pass").expect("unlock vault");
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0].password, "SuperSecret!123");
+        let _ = std::fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn biometric_hardware_detection_and_secret_roundtrip() {
+        let hw = biometrics::detect_hardware();
+        assert!(!hw.label.is_empty());
+        println!("Detected PC biometrics: available={} label={}", hw.available, hw.label);
+
+        let tmp = std::env::temp_dir().join(format!("voxban-bio-test-{}", models::new_id("b")));
+        let _ = std::fs::create_dir_all(&tmp);
+        // Verify OS secure storage roundtrip on macOS Keychain / Windows DPAPI
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            biometrics::clear_enrolled_secret(&tmp);
+            assert!(!biometrics::has_enrolled_secret(&tmp));
+            if biometrics::store_enrolled_secret(&tmp, "vault-secret-342").is_ok() {
+                assert!(biometrics::has_enrolled_secret(&tmp));
+                let loaded = biometrics::load_enrolled_secret(&tmp).expect("load biometric secret");
+                assert_eq!(loaded, "vault-secret-342");
+                biometrics::clear_enrolled_secret(&tmp);
+                assert!(!biometrics::has_enrolled_secret(&tmp));
+            }
+        }
         let _ = std::fs::remove_dir_all(tmp);
     }
 }

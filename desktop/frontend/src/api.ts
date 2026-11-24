@@ -31,9 +31,23 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(text) as { error?: string; message?: string };
+      if (parsed.error || parsed.message) {
+        throw new Error(parsed.error || parsed.message);
+      }
+    } catch (err) {
+      if (err instanceof Error && text.startsWith("{")) throw err;
+    }
     throw new Error(text || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+export interface BiometricStatus {
+  available: boolean;
+  enrolled: boolean;
+  label: string;
 }
 
 export const api = {
@@ -75,18 +89,37 @@ export const api = {
     req<{ ok: boolean }>(`/api/music/download/${encodeURIComponent(videoId)}`, { method: "DELETE" }),
   openMusicFolder: () => req<{ ok: boolean; path: string }>("/api/music/open-folder", { method: "POST" }),
 
-  // Password vault
-  vaultStatus: () => req<{ exists: boolean }>("/api/vault/status"),
-  vaultUnlock: (passphrase: string) =>
-    req<{ ok: boolean; entries?: PasswordEntry[]; error?: string }>("/api/vault/unlock", {
+  // Password vault (AES-256-GCM + optional native Fingerprint / Touch ID)
+  vaultStatus: () => req<{ exists: boolean; unlocked?: boolean; biometric: BiometricStatus }>("/api/vault/status"),
+  vaultUnlock: (passphrase: string, enableBiometric = false) =>
+    req<{
+      ok: boolean;
+      entries?: PasswordEntry[];
+      biometric?: BiometricStatus;
+      biometricWarning?: string | null;
+      error?: string;
+    }>("/api/vault/unlock", {
       method: "POST",
-      body: JSON.stringify({ passphrase }),
+      body: JSON.stringify({ passphrase, enableBiometric }),
     }),
-  vaultSave: (passphrase: string, entries: PasswordEntry[]) =>
+  vaultLock: () => req<{ ok: boolean; biometric?: BiometricStatus }>("/api/vault/lock", { method: "POST" }),
+  vaultSave: (entries: PasswordEntry[], passphrase?: string) =>
     req<{ ok: boolean; error?: string }>("/api/vault/save", {
       method: "POST",
-      body: JSON.stringify({ passphrase, entries }),
+      body: JSON.stringify({ passphrase: passphrase || undefined, entries }),
     }),
+  vaultBiometricUnlock: () =>
+    req<{ ok: boolean; entries?: PasswordEntry[]; biometric?: BiometricStatus; error?: string }>(
+      "/api/vault/biometric/unlock",
+      { method: "POST" },
+    ),
+  vaultBiometricEnable: (passphrase?: string) =>
+    req<{ ok: boolean; biometric?: BiometricStatus; error?: string }>("/api/vault/biometric/enable", {
+      method: "POST",
+      body: JSON.stringify({ passphrase: passphrase || undefined }),
+    }),
+  vaultBiometricDisable: () =>
+    req<{ ok: boolean; biometric?: BiometricStatus }>("/api/vault/biometric/disable", { method: "POST" }),
   vaultGenerate: () => req<{ password: string }>("/api/vault/generate", { method: "POST" }),
 
   // Support tickets -> abdullahmeyad7@gmail.com

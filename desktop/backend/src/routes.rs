@@ -1,4 +1,5 @@
 use crate::ai;
+use crate::biometrics;
 use crate::models::{
     now_ms, AppState, PasswordEntry, SupportTicket, WorkoutTrack, APP_VERSION, GITHUB_RELEASES_URL,
 };
@@ -44,6 +45,7 @@ pub struct AppContext {
     pub music: Arc<MusicEngine>,
     pub events: broadcast::Sender<String>,
     pub frontend_dir: Option<PathBuf>,
+    pub unlocked_vault_passphrase: RwLock<Option<String>>,
 }
 
 impl AppContext {
@@ -68,6 +70,7 @@ impl AppContext {
             music,
             events: tx,
             frontend_dir,
+            unlocked_vault_passphrase: RwLock::new(None),
         })
     }
 
@@ -103,8 +106,12 @@ pub fn build_router(ctx: Arc<AppContext>) -> Router {
         .route("/api/music/open-folder", post(music_open_folder))
         .route("/api/vault/status", get(vault_status))
         .route("/api/vault/unlock", post(vault_unlock))
+        .route("/api/vault/lock", post(vault_lock))
         .route("/api/vault/save", post(vault_save))
         .route("/api/vault/generate", post(vault_generate))
+        .route("/api/vault/biometric/unlock", post(vault_biometric_unlock))
+        .route("/api/vault/biometric/enable", post(vault_biometric_enable))
+        .route("/api/vault/biometric/disable", post(vault_biometric_disable))
         .route("/api/support/format", post(support_format))
         .route("/api/updates/check", get(updates_check))
         .route("/api/ws", get(ws_handler))
@@ -571,28 +578,109 @@ async fn serve_audio_with_range(
 
 // ---------------------------------------------------------------- Password Vault
 
+async fn current_biometric_status(ctx: &Arc<AppContext>) -> biometrics::BiometricStatus {
+    let data_dir = ctx.storage.data_dir.clone();
+    let exists = ctx.storage.vault_exists();
+    tokio::task::spawn_blocking(move || biometrics::status(&data_dir, exists))
+        .await
+        .unwrap_or(biometrics::BiometricStatus {
+            available: false,
+            enrolled: false,
+            label: "Fingerprint".into(),
+        })
+}
+
 async fn vault_status(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
-    Json(json!({ "exists": ctx.storage.vault_exists() }))
+    let exists = ctx.storage.vault_exists();
+    let unlocked = ctx.unlocked_vault_passphrase.read().await.is_some();
+    let biometric = current_biometric_status(&ctx).await;
+    Json(json!({
+        "exists": exists,
+        "unlocked": unlocked,
+        "biometric": biometric,
+    }))
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct VaultUnlockReq {
     passphrase: String,
+    #[serde(default)]
+    enable_biometric: bool,
 }
 
 async fn vault_unlock(
     State(ctx): State<Arc<AppContext>>,
     Json(req): Json<VaultUnlockReq>,
 ) -> impl IntoResponse {
+    if req.passphrase.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "Master password is required." })),
+        );
+    }
+
+    let existed = ctx.storage.vault_exists();
     match ctx.storage.unlock_vault(&req.passphrase) {
-        Ok(entries) => (StatusCode::OK, Json(json!({ "ok": true, "entries": entries }))),
+        Ok(entries) => {
+            if !existed {
+                if let Err(err) = ctx.storage.save_vault(&req.passphrase, &entries) {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "ok": false, "error": err })),
+                    );
+                }
+            }
+            *ctx.unlocked_vault_passphrase.write().await = Some(req.passphrase.clone());
+
+            let mut bio_warning: Option<String> = None;
+            if req.enable_biometric {
+                let data_dir = ctx.storage.data_dir.clone();
+                let pass = req.passphrase.clone();
+                let enroll_res = tokio::task::spawn_blocking(move || {
+                    let hw = biometrics::detect_hardware();
+                    if !hw.available {
+                        return Err("No fingerprint sensor is available on this PC.".to_string());
+                    }
+                    biometrics::verify_user(&format!(
+                        "Enable {} for your Voxban Password Vault",
+                        hw.label
+                    ))?;
+                    biometrics::store_enrolled_secret(&data_dir, &pass)
+                })
+                .await
+                .unwrap_or_else(|_| Err("Biometric verification failed.".to_string()));
+
+                if let Err(err) = enroll_res {
+                    bio_warning = Some(err);
+                }
+            }
+
+            let biometric = current_biometric_status(&ctx).await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "ok": true,
+                    "entries": entries,
+                    "biometric": biometric,
+                    "biometricWarning": bio_warning,
+                })),
+            )
+        }
         Err(err) => (StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": err }))),
     }
 }
 
+async fn vault_lock(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    *ctx.unlocked_vault_passphrase.write().await = None;
+    let biometric = current_biometric_status(&ctx).await;
+    Json(json!({ "ok": true, "biometric": biometric }))
+}
+
 #[derive(Deserialize)]
 struct VaultSaveReq {
-    passphrase: String,
+    #[serde(default)]
+    passphrase: Option<String>,
     entries: Vec<PasswordEntry>,
 }
 
@@ -600,10 +688,158 @@ async fn vault_save(
     State(ctx): State<Arc<AppContext>>,
     Json(req): Json<VaultSaveReq>,
 ) -> impl IntoResponse {
-    match ctx.storage.save_vault(&req.passphrase, &req.entries) {
-        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true }))),
+    let resolved = match req.passphrase.filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => match ctx.unlocked_vault_passphrase.read().await.clone() {
+            Some(p) => p,
+            None => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({ "ok": false, "error": "Vault is locked. Unlock it first." })),
+                );
+            }
+        },
+    };
+    match ctx.storage.save_vault(&resolved, &req.entries) {
+        Ok(()) => {
+            *ctx.unlocked_vault_passphrase.write().await = Some(resolved);
+            (StatusCode::OK, Json(json!({ "ok": true })))
+        }
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": err }))),
     }
+}
+
+async fn vault_biometric_unlock(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    if !ctx.storage.vault_exists() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "Create your vault with a master password first." })),
+        );
+    }
+
+    let data_dir = ctx.storage.data_dir.clone();
+    let auth_res = tokio::task::spawn_blocking(move || {
+        let hw = biometrics::detect_hardware();
+        if !hw.available {
+            return Err("No fingerprint sensor is available on this PC.".to_string());
+        }
+        if !biometrics::has_enrolled_secret(&data_dir) {
+            return Err(format!(
+                "{} is not enabled for this vault yet. Unlock once with your master password to turn it on.",
+                hw.label
+            ));
+        }
+        biometrics::verify_user(&format!("Unlock your Voxban Password Vault with {}", hw.label))?;
+        biometrics::load_enrolled_secret(&data_dir)
+    })
+    .await
+    .unwrap_or_else(|_| Err("Biometric verification failed.".to_string()));
+
+    let passphrase = match auth_res {
+        Ok(p) => p,
+        Err(err) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "ok": false, "error": err })),
+            );
+        }
+    };
+
+    match ctx.storage.unlock_vault(&passphrase) {
+        Ok(entries) => {
+            *ctx.unlocked_vault_passphrase.write().await = Some(passphrase);
+            let biometric = current_biometric_status(&ctx).await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "ok": true,
+                    "entries": entries,
+                    "biometric": biometric,
+                })),
+            )
+        }
+        Err(_) => {
+            // Saved OS credential no longer matches vault.enc (e.g. vault was replaced)
+            biometrics::clear_enrolled_secret(&ctx.storage.data_dir);
+            let biometric = current_biometric_status(&ctx).await;
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "ok": false,
+                    "error": "Saved biometric key no longer matches this vault. Unlock with your master password to re-link.",
+                    "biometric": biometric,
+                })),
+            )
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct VaultBioEnableReq {
+    #[serde(default)]
+    passphrase: Option<String>,
+}
+
+async fn vault_biometric_enable(
+    State(ctx): State<Arc<AppContext>>,
+    Json(req): Json<VaultBioEnableReq>,
+) -> impl IntoResponse {
+    let resolved = match req.passphrase.filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => match ctx.unlocked_vault_passphrase.read().await.clone() {
+            Some(p) => p,
+            None => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({ "ok": false, "error": "Unlock your vault first before enabling fingerprint unlock." })),
+                );
+            }
+        },
+    };
+
+    // Confirm passphrase matches the vault before saving into OS Keychain / DPAPI
+    if let Err(err) = ctx.storage.unlock_vault(&resolved) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "ok": false, "error": err })),
+        );
+    }
+    if !ctx.storage.vault_exists() {
+        if let Err(err) = ctx.storage.save_vault(&resolved, &[]) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "error": err })),
+            );
+        }
+    }
+
+    let data_dir = ctx.storage.data_dir.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let hw = biometrics::detect_hardware();
+        if !hw.available {
+            return Err("No fingerprint sensor detected on this PC.".to_string());
+        }
+        biometrics::verify_user(&format!("Enable {} for your Voxban Password Vault", hw.label))?;
+        biometrics::store_enrolled_secret(&data_dir, &resolved)
+    })
+    .await
+    .unwrap_or_else(|_| Err("Biometric setup failed.".to_string()));
+
+    let biometric = current_biometric_status(&ctx).await;
+    match res {
+        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true, "biometric": biometric }))),
+        Err(err) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "ok": false, "error": err, "biometric": biometric })),
+        ),
+    }
+}
+
+async fn vault_biometric_disable(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    let data_dir = ctx.storage.data_dir.clone();
+    let _ = tokio::task::spawn_blocking(move || biometrics::clear_enrolled_secret(&data_dir)).await;
+    let biometric = current_biometric_status(&ctx).await;
+    Json(json!({ "ok": true, "biometric": biometric }))
 }
 
 async fn vault_generate() -> impl IntoResponse {
