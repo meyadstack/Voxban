@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "../api";
+import { MarkdownChangelog } from "./MarkdownChangelog";
 import type {
   AppState,
   PairInfoResponse,
@@ -404,7 +405,7 @@ export function SettingsView({
           <div>
             <h3 className="font-semibold text-sm">App Updates (GitHub Releases)</h3>
             <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-              Voxban Desktop v3.4.0 · checks github.com/meyadstack/Voxban
+              Voxban Desktop v3.4.1 · checks github.com/meyadstack/Voxban
             </p>
           </div>
           <button
@@ -416,11 +417,26 @@ export function SettingsView({
           </button>
         </div>
         {release && (
-          <div className="vk-well p-3.5 text-xs space-y-2">
-            <div className="font-semibold">
-              Latest release: {release.latestTag}{" "}
-              {release.updateAvailable ? "— Update available!" : "— You're up to date"}
+          <div className="vk-well p-4 text-xs space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold text-sm">
+                {release.title || release.latestTag}{" "}
+                <span className="font-normal text-xs" style={{ color: "var(--vk-ink-2)" }}>
+                  {release.updateAvailable ? "— Update available!" : "— You’re up to date"}
+                </span>
+              </div>
+              <span className="font-mono text-[11px] px-2 py-0.5 rounded-full" style={{ background: "var(--vk-raised)" }}>
+                {release.latestTag}
+              </span>
             </div>
+            {release.notes && (
+              <div
+                className="p-3.5 rounded-2xl max-h-72 overflow-y-auto"
+                style={{ background: "var(--vk-raised)", border: "1px solid var(--vk-border)" }}
+              >
+                <MarkdownChangelog markdown={release.notes} />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <a
                 href={release.htmlUrl}

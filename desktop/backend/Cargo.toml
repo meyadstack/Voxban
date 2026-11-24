@@ -1,6 +1,6 @@
 [package]
 name = "voxban-backend"
-version = "3.4.0"
+version = "3.4.1"
 edition = "2021"
 description = "Rust backend for Voxban Windows PC — Kanban, Calendar Reminders, Voice AI, Notes, Money, Vault, Workouts, Music Player & Downloader, Support Tickets, and Phone QR LAN Sync"
 

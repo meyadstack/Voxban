@@ -15,6 +15,8 @@ import com.voicekanban.app.music.MusicDownloadManager
 import com.voicekanban.app.music.WorkoutMusicEngine
 import com.voicekanban.app.support.SupportTicketManager
 import com.voicekanban.app.sync.DesktopSyncManager
+import com.voicekanban.app.ui.screens.ChangelogBlock
+import com.voicekanban.app.ui.screens.parseChangelogMarkdown
 import com.voicekanban.app.update.AppUpdater
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -244,6 +246,31 @@ class NewFeaturesTest {
         assertEquals("webm", MusicDownloadManager.extensionForMime("audio/webm; codecs=\"opus\""))
         assertEquals("Eye of the Tiger - Survivor", MusicDownloadManager.sanitizeFileName("Eye of the Tiger / : * ? - Survivor"))
         assertEquals("3.5 MB", MusicDownloadManager.formatFileSize(3_670_016L))
+    }
+
+    @Test
+    fun parsesGithubReleaseMarkdownChangelogCleanly() {
+        val raw = """
+            ### What's New in Voxban 3.4.1
+            - **Fixed Phone Pairing** — `Stage.color` now syncs smoothly.
+            - **Markdown Changelog** — [Release notes](https://github.com/meyadstack/Voxban) render cleanly.
+
+            | Shot 1 | Shot 2 |
+            |:---:|:---:|
+            | <img src="https://raw.githubusercontent.com/meyadstack/Voxban/v3.4.0/docs/screenshots/pair-pc.png" width="200" /> | <img src="https://raw.githubusercontent.com/meyadstack/Voxban/v3.4.0/docs/screenshots/windows-desktop.png" width="420" /> |
+
+            ---
+            1. Install the latest APK.
+        """.trimIndent()
+
+        val blocks = parseChangelogMarkdown(raw)
+        assertTrue(blocks.any { it is ChangelogBlock.Heading && it.level == 3 && it.text.contains("3.4.1") })
+        assertTrue(blocks.any { it is ChangelogBlock.Bullet && it.text.contains("Fixed Phone Pairing") })
+        assertTrue(blocks.any { it is ChangelogBlock.Images && it.urls.size == 2 })
+        assertTrue(blocks.any { it is ChangelogBlock.Divider })
+        assertTrue(blocks.any { it is ChangelogBlock.Numbered && it.index == "1" })
+        // Must NEVER emit raw table separator pipes or raw HTML tags as paragraphs
+        assertFalse(blocks.any { it is ChangelogBlock.Paragraph && (it.text.contains(":---:") || it.text.contains("<img")) })
     }
 
     @Test

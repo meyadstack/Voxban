@@ -20,7 +20,7 @@ export interface Card {
 export interface Stage {
   id: string;
   title: string;
-  color: string;
+  color: number | string;
   cards: Card[];
 }
 
@@ -253,6 +253,13 @@ export function noteColorHex(num: number): string {
   const found = NOTE_COLORS.find((c) => c.num === num);
   if (found) return found.hex;
   return "#" + (num & 0xffffff).toString(16).padStart(6, "0");
+}
+
+export function stageColorHex(color: number | string): string {
+  if (typeof color === "string") {
+    return color.startsWith("#") ? color : `#${color}`;
+  }
+  return "#" + (color & 0xffffff).toString(16).padStart(6, "0");
 }
 
 export function newId(prefix: string): string {

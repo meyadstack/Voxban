@@ -51,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -143,6 +144,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
     var codeInput by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var scanPaused by remember { mutableStateOf(false) }
 
     var hasCameraPerm by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -155,6 +157,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
     fun executePair(payload: PairingPayload) {
         if (busy) return
         busy = true
+        scanPaused = true
         status = null
         scope.launch {
             val res = DesktopSyncManager.pairWithDesktop(payload, vm.state.value)
@@ -163,7 +166,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                 status = true to "Linked with ${out.desktop.pcName}! Your tasks, notes, calendar & workouts are synced."
                 vm.showToast(ToastKind.SUCCESS, "Linked with ${out.desktop.pcName}")
             }.onFailure { err ->
-                status = false to (err.message ?: "Couldn’t reach Windows PC. Make sure phone & PC are on the same Wi-Fi.")
+                status = false to (err.message ?: "Couldn’t reach Desktop. Make sure phone & Mac/PC are on the same Wi-Fi.")
             }
             busy = false
         }
@@ -276,7 +279,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                         Icon(Icons.Rounded.QrCodeScanner, null, tint = c.accent, modifier = Modifier.size(40.dp))
                         Text("Allow camera to scan PC QR", style = MaterialTheme.typography.titleMedium, color = c.ink, textAlign = TextAlign.Center)
                         Text(
-                            "Open Voxban on your Windows PC, then point your phone camera at the QR code to link instantly.",
+                            "Open Voxban on your Windows PC or Mac, then point your phone camera at the QR code to link instantly.",
                             fontSize = 12.sp,
                             color = c.inkSecondary,
                             textAlign = TextAlign.Center,
@@ -294,13 +297,14 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                         contentAlignment = Alignment.Center,
                     ) {
                         QrCameraPreview(
-                            enabled = !busy,
+                            enabled = !busy && !scanPaused,
                             onQrDetected = { raw ->
                                 val parsed = DesktopSyncManager.parseQrPayload(raw)
                                 if (parsed != null) {
                                     executePair(parsed)
                                 } else {
-                                    status = false to "That QR code isn’t a Voxban PC pairing code."
+                                    scanPaused = true
+                                    status = false to "That QR code isn’t a Voxban Desktop pairing code."
                                 }
                             },
                         )
@@ -313,13 +317,21 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     CircularProgressIndicator(color = c.limeTile)
                                     Spacer(Modifier.height(8.dp))
-                                    Text("Connecting to Windows PC…", color = Color.White, fontSize = 13.sp)
+                                    Text("Connecting to Desktop…", color = Color.White, fontSize = 13.sp)
                                 }
+                            }
+                        } else if (scanPaused) {
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                                Button(
+                                    onClick = { scanPaused = false; status = null },
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                                ) { Text("Scan Again", fontWeight = FontWeight.SemiBold) }
                             }
                         }
                     }
                     Text(
-                        "Point at the QR code displayed on Voxban for Windows PC.",
+                        "Point at the QR code displayed on Voxban Desktop (Windows / Mac).",
                         fontSize = 12.sp,
                         color = c.inkSecondary,
                         textAlign = TextAlign.Center,
@@ -335,7 +347,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                     onValue = { hostInput = it; status = null },
                     placeholder = "e.g. 192.168.1.42:43821",
                 )
-                SectionLabel("6-digit pairing code (from Windows PC)")
+                SectionLabel("6-digit pairing code (from Desktop app)")
                 InputField(
                     value = codeInput,
                     onValue = { codeInput = it.filter { ch -> ch.isLetterOrDigit() }.uppercase().take(8); status = null },
@@ -382,6 +394,7 @@ private fun QrCameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
     val consumed = remember { AtomicBoolean(false) }
+    val enabledState = rememberUpdatedState(enabled)
 
     DisposableEffect(enabled) {
         if (enabled) consumed.set(false)
@@ -410,6 +423,10 @@ private fun QrCameraPreview(
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
                     analysis.setAnalyzer(executor) { image ->
+                        if (!enabledState.value || consumed.get()) {
+                            image.close()
+                            return@setAnalyzer
+                        }
                         decodeQrFromProxy(image, reader)?.let { text ->
                             if (!consumed.getAndSet(true)) {
                                 ContextCompat.getMainExecutor(ctx).execute { onQrDetected(text) }
@@ -429,8 +446,10 @@ private fun decodeQrFromProxy(image: ImageProxy, reader: MultiFormatReader): Str
     return try {
         val plane = image.planes.firstOrNull() ?: return null
         val buffer = plane.buffer
-        val data = ByteArray(buffer.remaining())
-        buffer.get(data)
+        val remaining = buffer.remaining()
+        val required = plane.rowStride * image.height
+        val data = ByteArray(maxOf(remaining, required))
+        buffer.get(data, 0, remaining)
         val source = PlanarYUVLuminanceSource(
             data,
             plane.rowStride,

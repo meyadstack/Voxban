@@ -1,13 +1,50 @@
 use chrono::Utc;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-pub const APP_VERSION: &str = "3.4.0";
+pub const APP_VERSION: &str = "3.4.1";
 pub const SUPPORT_EMAIL: &str = "abdullahmeyad7@gmail.com";
 pub const GITHUB_RELEASES_URL: &str = "https://github.com/meyadstack/Voxban/releases/latest";
 pub const GITHUB_API_LATEST_URL: &str =
     "https://api.github.com/repos/meyadstack/Voxban/releases/latest";
+
+/// Accepts both Android ARGB Long integers (e.g. 4284704497 / 0xFF6366F1) and CSS hex strings ("#6366F1").
+pub fn deserialize_argb_color<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ColorVal {
+        Unsigned(u64),
+        Signed(i64),
+        Hex(String),
+    }
+
+    match Option::<ColorVal>::deserialize(deserializer)? {
+        Some(ColorVal::Unsigned(n)) => Ok(n),
+        Some(ColorVal::Signed(n)) => Ok(n as u32 as u64),
+        Some(ColorVal::Hex(s)) => {
+            let clean = s.trim().trim_start_matches('#').trim_start_matches("0x");
+            match u64::from_str_radix(clean, 16) {
+                Ok(v) if clean.len() <= 6 => Ok(0xFF00_0000 | v),
+                Ok(v) => Ok(v),
+                Err(_) => Ok(default_stage_color()),
+            }
+        }
+        None => Ok(default_stage_color()),
+    }
+}
+
+/// Deserializes `null` as `T::default()` so nullable fields from older Android states never cause HTTP 422.
+pub fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 pub fn now_ms() -> i64 {
     Utc::now().timestamp_millis()
@@ -44,7 +81,7 @@ pub struct Card {
     pub priority: Priority,
     #[serde(default)]
     pub notes: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub tags: Vec<String>,
     #[serde(default)]
     pub due_at: Option<i64>,
@@ -65,14 +102,15 @@ fn default_remind_min() -> Option<i32> {
 pub struct Stage {
     pub id: String,
     pub title: String,
-    #[serde(default = "default_stage_color")]
-    pub color: String,
-    #[serde(default)]
+    /// ARGB color as 32-bit unsigned int (matches Android Kotlin Long, e.g. 0xFF5258D6).
+    #[serde(default = "default_stage_color", deserialize_with = "deserialize_argb_color")]
+    pub color: u64,
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub cards: Vec<Card>,
 }
 
-fn default_stage_color() -> String {
-    "#4B6BFB".to_string()
+fn default_stage_color() -> u64 {
+    0xFF4B6BFB
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +118,7 @@ fn default_stage_color() -> String {
 pub struct Board {
     pub id: String,
     pub title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub stages: Vec<Stage>,
     #[serde(default = "now_ms")]
     pub created_at: i64,
@@ -105,13 +143,13 @@ impl Default for Workspace {
                 Stage {
                     id: "st-todo".into(),
                     title: "To Do".into(),
-                    color: "#5258D6".into(),
+                    color: 0xFF5258D6,
                     cards: vec![
                         Card {
                             id: "c-1".into(),
                             text: "Write launch blog post".into(),
                             priority: Priority::High,
-                            notes: Some("Highlight calendar reminders, workout music downloads & Windows PC sync.".into()),
+                            notes: Some("Highlight calendar reminders, workout music downloads & Desktop sync.".into()),
                             tags: vec!["marketing".into()],
                             due_at: Some(now + 6 * 3_600_000),
                             remind_before_min: Some(60),
@@ -134,10 +172,10 @@ impl Default for Workspace {
                 Stage {
                     id: "st-prog".into(),
                     title: "In Progress".into(),
-                    color: "#D97706".into(),
+                    color: 0xFFD97706,
                     cards: vec![Card {
                         id: "c-3".into(),
-                        text: "Verify Windows & Android QR sync".into(),
+                        text: "Verify Desktop & Android QR sync".into(),
                         priority: Priority::High,
                         notes: Some("Test bidirectional merge over Wi-Fi.".into()),
                         tags: vec!["sync".into()],
@@ -150,16 +188,16 @@ impl Default for Workspace {
                 Stage {
                     id: "st-rev".into(),
                     title: "Review".into(),
-                    color: "#0EA5E9".into(),
+                    color: 0xFF0EA5E9,
                     cards: vec![],
                 },
                 Stage {
                     id: "st-done".into(),
                     title: "Done".into(),
-                    color: "#16A34A".into(),
+                    color: 0xFF16A34A,
                     cards: vec![Card {
                         id: "c-4".into(),
-                        text: "Ship Voxban 3.3.0 APK".into(),
+                        text: "Ship Voxban 3.4.0".into(),
                         priority: Priority::Low,
                         notes: None,
                         tags: vec!["release".into()],
@@ -222,13 +260,13 @@ pub struct CalendarReminder {
 pub struct Note {
     pub id: String,
     pub title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub body: String,
-    #[serde(default = "default_note_color")]
+    #[serde(default = "default_note_color", deserialize_with = "deserialize_argb_color")]
     pub color: u64,
     #[serde(default)]
     pub pinned: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub source: String,
     #[serde(default = "now_ms")]
     pub created_at: i64,
@@ -546,7 +584,7 @@ fn default_true() -> bool {
 pub struct Settings {
     #[serde(default = "default_true")]
     pub onboarded: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub user_name: String,
     #[serde(default = "default_lang")]
     pub language: String,
@@ -554,15 +592,15 @@ pub struct Settings {
     pub engine: String,
     #[serde(default = "default_theme")]
     pub theme_mode: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub cloud_models: HashMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub currency: String,
     #[serde(default = "default_weight")]
     pub weight_kg: f64,
     #[serde(default = "default_true")]
     pub auto_check_updates: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub dismissed_update_tag: String,
     #[serde(default)]
     pub speak_replies: bool,
@@ -606,31 +644,31 @@ pub struct AppState {
     pub workspace: Workspace,
     #[serde(default)]
     pub settings: Settings,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub sessions: Vec<ChatSession>,
     #[serde(default)]
     pub active_session_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub voice_chat: Vec<ChatMessage>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub notes: Vec<Note>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub transactions: Vec<Transaction>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub budgets: Vec<Budget>,
     #[serde(default = "default_workout_types")]
     pub workout_types: Vec<WorkoutType>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub workouts: Vec<WorkoutSession>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub focus_sessions: Vec<FocusSession>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub calendar_reminders: Vec<CalendarReminder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub saved_workout_tracks: Vec<WorkoutTrack>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub downloaded_workout_tracks: Vec<DownloadedTrack>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub support_tickets: Vec<SupportTicket>,
 }
 

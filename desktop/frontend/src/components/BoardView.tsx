@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { AppState, CalendarReminder, Card, Priority, ReminderRepeat } from "../types";
-import { newId } from "../types";
+import { newId, stageColorHex } from "../types";
 
 interface Props {
   state: AppState;
@@ -178,7 +178,7 @@ export function BoardView({ state, onSaveState, onRunCommand }: Props) {
             <div key={stage.id} className="vk-card p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: stageColorHex(stage.color) }} />
                   <h3 className="font-semibold text-sm">{stage.title}</h3>
                   <span
                     className="text-xs px-2 py-0.5 rounded-full"

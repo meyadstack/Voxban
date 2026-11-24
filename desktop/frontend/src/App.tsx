@@ -29,6 +29,7 @@ import { SettingsView, SupportView } from "./components/SupportSettingsViews";
 import { VoxbanAvatar } from "./components/VoxbanAvatar";
 import { type MusicController, WorkoutMusicView } from "./components/WorkoutMusicView";
 import type { AppState, PairInfoResponse, WorkoutTrack } from "./types";
+import { stageColorHex } from "./types";
 
 type Section = "HOME" | "BOARD" | "ASSISTANT" | "WORKOUT" | "NOTES" | "MONEY" | "VAULT" | "FOCUS" | "SUPPORT" | "SETTINGS";
 
@@ -344,7 +345,7 @@ export default function App() {
                     {activeBoard.stages.map((s) => (
                       <div key={s.id} className="vk-well p-3 flex items-center justify-between">
                         <span className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: stageColorHex(s.color) }} />
                           {s.title}
                         </span>
                         <span className="font-bold">{s.cards.length}</span>

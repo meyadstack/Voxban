@@ -116,9 +116,68 @@ mod tests {
 
     #[test]
     fn semver_updater_compares_correctly() {
-        assert!(is_newer_version("v3.5.0", "3.4.0"));
-        assert!(!is_newer_version("v3.4.0", "3.4.0"));
-        assert!(!is_newer_version("3.3.0", "3.4.0"));
+        assert!(is_newer_version("v3.5.0", "3.4.1"));
+        assert!(!is_newer_version("v3.4.1", "3.4.1"));
+        assert!(!is_newer_version("3.3.0", "3.4.1"));
+    }
+
+    #[test]
+    fn android_kotlin_appstate_json_deserializes_and_roundtrips() {
+        // Exact JSON structure produced by Android Kotlin kotlinx.serialization (Stage.color is Long!)
+        let android_json = r##"{
+            "workspace": {
+                "boards": [{
+                    "id": "b-1",
+                    "title": "Product Launch",
+                    "stages": [
+                        { "id": "todo", "title": "To Do", "color": 4284704497, "cards": [
+                            { "id": "c-1", "text": "Ship 3.4.1", "notes": null, "priority": "HIGH", "tags": ["mobile"], "createdAt": 1700000000000, "dueAt": null, "remindBeforeMin": 60 }
+                        ]},
+                        { "id": "done", "title": "Done", "color": "#16A34A", "cards": [] }
+                    ],
+                    "createdAt": 1700000000000
+                }],
+                "activeBoardId": "b-1"
+            },
+            "settings": {
+                "onboarded": true,
+                "userName": "Abdullah",
+                "language": "en-US",
+                "engine": "GEMINI",
+                "themeMode": "SYSTEM",
+                "cloudModels": {},
+                "currency": "৳",
+                "weightKg": 70.0,
+                "autoCheckUpdates": true,
+                "dismissedUpdateTag": "",
+                "pairedDesktop": null
+            },
+            "chat": [],
+            "sessions": [],
+            "activeSessionId": null,
+            "voiceChat": [],
+            "notes": [{ "id": "n1", "title": "Test", "body": "Line 1\nLine 2", "color": 4293590919, "pinned": true, "source": "", "createdAt": 1, "updatedAt": 2 }],
+            "transactions": [],
+            "budgets": [],
+            "workoutTypes": [],
+            "workouts": [],
+            "workoutReminder": { "enabled": false, "hour": 18, "minute": 0, "days": [1,2,3], "typeId": "walking" },
+            "focusSessions": [],
+            "activeFocus": null,
+            "calendarReminders": [{ "id": "r1", "title": "Dentist", "notes": "", "at": 1700000000000, "remindBeforeMin": 15, "repeat": "WEEKLY", "done": false, "createdAt": 1 }],
+            "savedWorkoutTracks": [],
+            "downloadedWorkoutTracks": [],
+            "supportTickets": []
+        }"##;
+
+        let parsed: models::AppState = serde_json::from_str(android_json).expect("Must parse Android JSON");
+        assert_eq!(parsed.workspace.boards[0].stages[0].color, 4284704497);
+        assert_eq!(parsed.workspace.boards[0].stages[1].color, 0xFF16A34A);
+        assert_eq!(parsed.settings.user_name, "Abdullah");
+
+        // Ensure re-serialized color is a JSON integer (compatible with Android Kotlin Stage.color: Long!)
+        let reserialized = serde_json::to_value(&parsed).unwrap();
+        assert!(reserialized["workspace"]["boards"][0]["stages"][0]["color"].is_u64());
     }
 
     #[test]

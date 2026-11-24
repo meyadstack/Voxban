@@ -11,7 +11,7 @@ use axum::{
     body::Body,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path as AxumPath, Query, State,
+        DefaultBodyLimit, Path as AxumPath, Query, State,
     },
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -109,6 +109,7 @@ pub fn build_router(ctx: Arc<AppContext>) -> Router {
         .route("/api/updates/check", get(updates_check))
         .route("/api/ws", get(ws_handler))
         .fallback(serve_frontend)
+        .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .layer(cors)
         .with_state(ctx)
 }

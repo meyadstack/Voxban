@@ -23,8 +23,8 @@ android {
         applicationId = "com.voicekanban.app.native"
         minSdk = 28
         targetSdk = 36
-        versionCode = 10
-        versionName = "3.4.0"
+        versionCode = 11
+        versionName = "3.4.1"
     }
 
     signingConfigs {
