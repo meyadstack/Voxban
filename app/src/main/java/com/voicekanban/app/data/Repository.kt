@@ -17,19 +17,31 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 
 /**
  * Single source of truth for boards, settings and the assistant chat.
  * State lives in memory as a [StateFlow] and is written to `state.json`
- * (atomically, debounced). Secrets live in encrypted preferences.
+ * (atomically, debounced) with a rolling `state.backup.json` and section-by-section
+ * migration recovery so app updates never reset user data to dummy entries.
  */
 @OptIn(FlowPreview::class)
 class Repository private constructor(private val context: Context) {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = false }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        prettyPrint = false
+        isLenient = true
+        coerceInputValues = true
+    }
     private val file = File(context.filesDir, "state.json")
+    private val backupFile = File(context.filesDir, "state.backup.json")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(load())
@@ -39,17 +51,127 @@ class Repository private constructor(private val context: Context) {
         _state.drop(1).debounce(250).onEach { save(it) }.launchIn(scope)
     }
 
-    private fun load(): AppState = try {
-        if (file.exists()) json.decodeFromString(AppState.serializer(), file.readText()).sanitized() else default()
-    } catch (e: Exception) {
-        Log.w(TAG, "State unreadable, starting fresh", e)
-        file.copyTo(File(context.filesDir, "state.corrupt.json"), overwrite = true)
-        default()
+    private fun load(): AppState {
+        // 1. Primary state.json (full decode -> section-by-section recovery)
+        if (file.exists()) {
+            val raw = runCatching { file.readText() }.getOrNull()
+            if (!raw.isNullOrBlank()) {
+                runCatching { json.decodeFromString(AppState.serializer(), raw).sanitized() }
+                    .getOrNull()
+                    ?.let { return it }
+
+                Log.w(TAG, "Primary state.json needed resilient migration; preserving user data")
+                runCatching { file.copyTo(File(context.filesDir, "state.pre-migration.json"), overwrite = true) }
+                recoverStateFromJson(raw)?.sanitized()?.let { recovered ->
+                    save(recovered)
+                    return recovered
+                }
+            }
+        }
+        // 2. Rolling backup fallback
+        if (backupFile.exists()) {
+            val raw = runCatching { backupFile.readText() }.getOrNull()
+            if (!raw.isNullOrBlank()) {
+                runCatching { json.decodeFromString(AppState.serializer(), raw).sanitized() }
+                    .getOrNull()
+                    ?.let { return it }
+                recoverStateFromJson(raw)?.sanitized()?.let { return it }
+            }
+        }
+        return default()
     }
 
+    /** Clean empty workspace for first-time installs (no dummy tasks injected on updates). */
     private fun default(): AppState {
-        val board = Presets.sprint()
+        val board = Presets.empty()
         return AppState(Workspace(listOf(board), board.id))
+    }
+
+    /** Recovers each top-level AppState section independently so a single schema tweak never wipes user data. */
+    private fun recoverStateFromJson(raw: String): AppState? {
+        val root = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
+        var recovered = default()
+        var anyRecovered = false
+
+        root["workspace"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(Workspace.serializer(), el) }.getOrNull()?.let {
+                recovered = recovered.copy(workspace = it); anyRecovered = true
+            }
+        }
+        root["settings"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(Settings.serializer(), el) }.getOrNull()?.let {
+                recovered = recovered.copy(settings = it); anyRecovered = true
+            }
+        }
+        root["sessions"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(ChatSession.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(sessions = it); anyRecovered = true
+            }
+        }
+        root["activeSessionId"]?.let { el ->
+            recovered = recovered.copy(activeSessionId = el.jsonPrimitive.contentOrNull)
+        }
+        root["voiceChat"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(ChatMessage.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(voiceChat = it); anyRecovered = true
+            }
+        }
+        root["notes"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(Note.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(notes = it); anyRecovered = true
+            }
+        }
+        root["transactions"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(Transaction.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(transactions = it); anyRecovered = true
+            }
+        }
+        root["budgets"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(Budget.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(budgets = it); anyRecovered = true
+            }
+        }
+        root["workoutTypes"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(WorkoutType.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(workoutTypes = it); anyRecovered = true
+            }
+        }
+        root["workouts"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(WorkoutSession.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(workouts = it); anyRecovered = true
+            }
+        }
+        root["workoutReminder"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(WorkoutReminder.serializer(), el) }.getOrNull()?.let {
+                recovered = recovered.copy(workoutReminder = it); anyRecovered = true
+            }
+        }
+        root["focusSessions"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(FocusSession.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(focusSessions = it); anyRecovered = true
+            }
+        }
+        root["calendarReminders"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(CalendarReminder.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(calendarReminders = it); anyRecovered = true
+            }
+        }
+        root["savedWorkoutTracks"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(WorkoutTrack.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(savedWorkoutTracks = it); anyRecovered = true
+            }
+        }
+        root["downloadedWorkoutTracks"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(DownloadedTrack.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(downloadedWorkoutTracks = it); anyRecovered = true
+            }
+        }
+        root["supportTickets"]?.let { el ->
+            runCatching { json.decodeFromJsonElement(ListSerializer(SupportTicket.serializer()), el) }.getOrNull()?.let {
+                recovered = recovered.copy(supportTickets = it); anyRecovered = true
+            }
+        }
+        return if (anyRecovered) recovered else null
     }
 
     private fun AppState.sanitized(): AppState {
@@ -80,6 +202,9 @@ class Repository private constructor(private val context: Context) {
 
     private fun save(s: AppState) {
         try {
+            if (file.exists()) {
+                runCatching { file.copyTo(backupFile, overwrite = true) }
+            }
             val tmp = File(file.parentFile, "state.json.tmp")
             val trimmed = s.copy(
                 sessions = s.sessions.take(60).map { it.copy(messages = it.messages.takeLast(200)) },

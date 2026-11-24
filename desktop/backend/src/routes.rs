@@ -407,7 +407,7 @@ async fn music_stream(
     AxumPath(video_id): AxumPath<String>,
     headers: HeaderMap,
 ) -> Response {
-    // Check if permanently downloaded in state first
+    // 1. Check permanently downloaded tracks first (instant offline playback)
     let downloaded_path = {
         let st = ctx.state.read().await;
         st.downloaded_workout_tracks
@@ -416,18 +416,100 @@ async fn music_stream(
             .map(|d| (PathBuf::from(&d.local_path), d.mime_type.clone()))
             .filter(|(p, _)| p.exists())
     };
+    if let Some((path, mime)) = downloaded_path {
+        return serve_audio_with_range(&path, &mime, &headers, None).await;
+    }
 
-    let (path, mime) = match downloaded_path {
-        Some(pair) => pair,
-        None => match ctx.music.ensure_cached_file(&video_id).await {
-            Ok(pair) => pair,
-            Err(err) => {
-                return (StatusCode::BAD_GATEWAY, err).into_response();
-            }
-        },
+    // 2. Check local 150 MB disk cache (instant replay)
+    if let Some((path, mime)) = ctx.music.cached_audio_path(&video_id) {
+        return serve_audio_with_range(&path, &mime, &headers, None).await;
+    }
+
+    // 3. Stream immediately with Range passthrough so playback starts in < 1s (even for 1-hour mixes!),
+    //    and warm the local disk cache asynchronously in the background for tracks <= 25 MB.
+    let stream = match ctx.music.resolve_audio_stream(&video_id, false).await {
+        Ok(s) => s,
+        Err(err) => return (StatusCode::BAD_GATEWAY, err).into_response(),
     };
 
-    serve_audio_with_range(&path, &mime, &headers, None).await
+    if stream.content_length.unwrap_or(0) > 0 && stream.content_length.unwrap_or(0) <= 25 * 1024 * 1024 {
+        let music_bg = ctx.music.clone();
+        let vid_bg = video_id.clone();
+        tokio::spawn(async move {
+            let _ = music_bg.ensure_cached_file(&vid_bg).await;
+        });
+    }
+
+    let range_hdr = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let mut req = ctx
+        .music
+        .http_client()
+        .get(&stream.url)
+        .header("User-Agent", &stream.user_agent);
+    if let Some(ref rng) = range_hdr {
+        req = req.header("Range", rng);
+    } else if let Some(total) = stream.content_length.filter(|&n| n > 0) {
+        let first_chunk = (1024 * 1024 - 1).min(total - 1);
+        req = req.header("Range", format!("bytes=0-{first_chunk}"));
+    }
+
+    let upstream = match req.send().await {
+        Ok(r) if r.status().is_success() || r.status().as_u16() == 206 => r,
+        _ => {
+            ctx.music.invalidate_stream(&video_id).await;
+            let refreshed = match ctx.music.resolve_audio_stream(&video_id, true).await {
+                Ok(s) => s,
+                Err(err) => return (StatusCode::BAD_GATEWAY, err).into_response(),
+            };
+            let mut retry_req = ctx
+                .music
+                .http_client()
+                .get(&refreshed.url)
+                .header("User-Agent", &refreshed.user_agent);
+            if let Some(ref rng) = range_hdr {
+                retry_req = retry_req.header("Range", rng);
+            } else if let Some(total) = refreshed.content_length.filter(|&n| n > 0) {
+                let first_chunk = (1024 * 1024 - 1).min(total - 1);
+                retry_req = retry_req.header("Range", format!("bytes=0-{first_chunk}"));
+            }
+            match retry_req.send().await {
+                Ok(r) if r.status().is_success() || r.status().as_u16() == 206 => r,
+                Ok(r) => return (StatusCode::BAD_GATEWAY, format!("Upstream audio HTTP {}", r.status())).into_response(),
+                Err(e) => return (StatusCode::BAD_GATEWAY, format!("Audio proxy error: {e}")).into_response(),
+            }
+        }
+    };
+
+    let status = StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::PARTIAL_CONTENT);
+    let content_range = upstream
+        .headers()
+        .get(header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let content_len = upstream
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let body_stream = upstream.bytes_stream();
+
+    let mut builder = Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, &stream.mime_type)
+        .header(header::ACCEPT_RANGES, "bytes");
+    if let Some(cr) = content_range {
+        builder = builder.header(header::CONTENT_RANGE, cr);
+    }
+    if let Some(cl) = content_len {
+        builder = builder.header(header::CONTENT_LENGTH, cl);
+    }
+    builder
+        .body(Body::from_stream(body_stream))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 async fn music_download(

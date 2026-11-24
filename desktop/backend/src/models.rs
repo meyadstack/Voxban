@@ -3,7 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-pub const APP_VERSION: &str = "3.4.2";
+pub const APP_VERSION: &str = "3.5.0";
 pub const SUPPORT_EMAIL: &str = "abdullahmeyad7@gmail.com";
 pub const GITHUB_RELEASES_URL: &str = "https://github.com/meyadstack/Voxban/releases/latest";
 pub const GITHUB_API_LATEST_URL: &str =
@@ -134,78 +134,34 @@ pub struct Workspace {
 impl Default for Workspace {
     fn default() -> Self {
         let now = now_ms();
-        let day = 86_400_000i64;
         let board = Board {
-            id: "b-launch".into(),
-            title: "Product Launch".into(),
+            id: "b-main".into(),
+            title: "My Board".into(),
             created_at: now,
             stages: vec![
                 Stage {
-                    id: "st-todo".into(),
+                    id: "todo".into(),
                     title: "To Do".into(),
-                    color: 0xFF5258D6,
-                    cards: vec![
-                        Card {
-                            id: "c-1".into(),
-                            text: "Write launch blog post".into(),
-                            priority: Priority::High,
-                            notes: Some("Highlight calendar reminders, workout music downloads & Desktop sync.".into()),
-                            tags: vec!["marketing".into()],
-                            due_at: Some(now + 6 * 3_600_000),
-                            remind_before_min: Some(60),
-                            created_at: now,
-                            updated_at: now,
-                        },
-                        Card {
-                            id: "c-2".into(),
-                            text: "Polish onboarding copy".into(),
-                            priority: Priority::Medium,
-                            notes: None,
-                            tags: vec!["ux".into()],
-                            due_at: Some(now + day),
-                            remind_before_min: Some(60),
-                            created_at: now,
-                            updated_at: now,
-                        },
-                    ],
-                },
-                Stage {
-                    id: "st-prog".into(),
-                    title: "In Progress".into(),
-                    color: 0xFFD97706,
-                    cards: vec![Card {
-                        id: "c-3".into(),
-                        text: "Verify Desktop & Android QR sync".into(),
-                        priority: Priority::High,
-                        notes: Some("Test bidirectional merge over Wi-Fi.".into()),
-                        tags: vec!["sync".into()],
-                        due_at: Some(now + 2 * day),
-                        remind_before_min: Some(60),
-                        created_at: now,
-                        updated_at: now,
-                    }],
-                },
-                Stage {
-                    id: "st-rev".into(),
-                    title: "Review".into(),
-                    color: 0xFF0EA5E9,
+                    color: 0xFF6366F1,
                     cards: vec![],
                 },
                 Stage {
-                    id: "st-done".into(),
+                    id: "progress".into(),
+                    title: "In Progress".into(),
+                    color: 0xFFF59E0B,
+                    cards: vec![],
+                },
+                Stage {
+                    id: "review".into(),
+                    title: "Review".into(),
+                    color: 0xFF06B6D4,
+                    cards: vec![],
+                },
+                Stage {
+                    id: "done".into(),
                     title: "Done".into(),
-                    color: 0xFF16A34A,
-                    cards: vec![Card {
-                        id: "c-4".into(),
-                        text: "Ship Voxban 3.4.0".into(),
-                        priority: Priority::Low,
-                        notes: None,
-                        tags: vec!["release".into()],
-                        due_at: None,
-                        remind_before_min: None,
-                        created_at: now - day,
-                        updated_at: now - day,
-                    }],
+                    color: 0xFF10B981,
+                    cards: vec![],
                 },
             ],
         };
@@ -674,39 +630,19 @@ pub struct AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        let now = now_ms();
         Self {
             workspace: Workspace::default(),
             settings: Settings::default(),
             sessions: vec![],
             active_session_id: None,
             voice_chat: vec![],
-            notes: vec![Note {
-                id: "n-welcome".into(),
-                title: "Welcome to Voxban for PC".into(),
-                body: "# Quick tips\n- Select and copy any note text directly without clicking Edit\n- Press Enter for a new line in notes and chat\n- Scan the QR code with your Voxban Android phone to sync\n- [ ] Try the Workout Music downloader".into(),
-                color: 0xFFEAFF87,
-                pinned: true,
-                source: String::new(),
-                created_at: now,
-                updated_at: now,
-            }],
+            notes: vec![],
             transactions: vec![],
             budgets: vec![],
             workout_types: default_workout_types(),
             workouts: vec![],
             focus_sessions: vec![],
-            calendar_reminders: vec![CalendarReminder {
-                id: "rem-welcome".into(),
-                title: "Sync Voxban phone & PC".into(),
-                notes: "Calendar-only reminder — never clutters your Kanban board.".into(),
-                at: now + 3_600_000,
-                remind_before_min: 15,
-                repeat: ReminderRepeat::None,
-                done: false,
-                created_at: now,
-                updated_at: now,
-            }],
+            calendar_reminders: vec![],
             saved_workout_tracks: vec![],
             downloaded_workout_tracks: vec![],
             support_tickets: vec![],

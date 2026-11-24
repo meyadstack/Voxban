@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -170,6 +170,8 @@ export function VaultView() {
   const [enrollOnUnlock, setEnrollOnUnlock] = useState(true);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioNotice, setBioNotice] = useState<string | null>(null);
+  const [justLocked, setJustLocked] = useState(false);
+  const autoPromptedRef = useRef(false);
   const [passphrase, setPassphrase] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [entries, setEntries] = useState<PasswordEntry[]>([]);
@@ -182,6 +184,29 @@ export function VaultView() {
   const [password, setPassword] = useState("");
   const [url, setUrl] = useState("");
 
+  const unlockWithBiometric = useCallback(async (labelFallback?: string) => {
+    setError(null);
+    setBioNotice(null);
+    setBioBusy(true);
+    try {
+      const res = await api.vaultBiometricUnlock();
+      if (res.ok) {
+        setEntries(res.entries || []);
+        setUnlocked(true);
+        setPassphrase("");
+        setJustLocked(false);
+        if (res.biometric) setBiometric(res.biometric);
+      } else {
+        if (res.biometric) setBiometric(res.biometric);
+        setError(res.error || `${labelFallback || "Biometric"} unlock cancelled. Enter your master password below.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBioBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     void api
       .vaultStatus()
@@ -190,10 +215,15 @@ export function VaultView() {
         if (r.biometric) {
           setBiometric(r.biometric);
           setEnrollOnUnlock(!r.exists && r.biometric.available);
+          // Automatically prompt Touch ID / Windows Hello Fingerprint on entering Vault — no extra unlock button needed!
+          if (r.exists && r.biometric.available && r.biometric.enrolled && !autoPromptedRef.current) {
+            autoPromptedRef.current = true;
+            void unlockWithBiometric(r.biometric.label);
+          }
         }
       })
       .catch(() => setExists(false));
-  }, []);
+  }, [unlockWithBiometric]);
 
   const unlock = async () => {
     if (!passphrase.trim()) return;
@@ -207,36 +237,15 @@ export function VaultView() {
         setEntries(res.entries || []);
         setUnlocked(true);
         setExists(true);
+        setJustLocked(false);
         if (res.biometric) setBiometric(res.biometric);
         if (res.biometricWarning) {
           setBioNotice(res.biometricWarning);
         } else if (shouldEnroll && res.biometric?.enrolled) {
-          setBioNotice(`${res.biometric.label} enabled for this vault.`);
+          setBioNotice(`${res.biometric.label} enabled — next time it will prompt automatically.`);
         }
       } else {
         setError(res.error || "Wrong master password.");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBioBusy(false);
-    }
-  };
-
-  const unlockWithBiometric = async () => {
-    setError(null);
-    setBioNotice(null);
-    setBioBusy(true);
-    try {
-      const res = await api.vaultBiometricUnlock();
-      if (res.ok) {
-        setEntries(res.entries || []);
-        setUnlocked(true);
-        setPassphrase("");
-        if (res.biometric) setBiometric(res.biometric);
-      } else {
-        if (res.biometric) setBiometric(res.biometric);
-        setError(res.error || `${biometric.label} unlock failed.`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -257,7 +266,7 @@ export function VaultView() {
       } else {
         const res = await api.vaultBiometricEnable(passphrase || undefined);
         if (res.biometric) setBiometric(res.biometric);
-        setBioNotice(`${res.biometric?.label || biometric.label} unlock enabled!`);
+        setBioNotice(`${res.biometric?.label || biometric.label} enabled — Vault will auto-ask next time.`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -273,6 +282,7 @@ export function VaultView() {
     setPassphrase("");
     setError(null);
     setBioNotice(null);
+    setJustLocked(true);
   };
 
   const persist = async (next: PasswordEntry[]) => {
@@ -302,38 +312,32 @@ export function VaultView() {
   };
 
   if (!unlocked) {
-    const canQuickBioUnlock = Boolean(exists && biometric.available && biometric.enrolled);
+    const bioEnrolled = Boolean(exists && biometric.available && biometric.enrolled);
     return (
       <div className="max-w-md mx-auto vk-card p-6 space-y-4 mt-8 text-center">
-        <div className="w-14 h-14 mx-auto rounded-full bg-[#EAFF87] text-[#1B201C] flex items-center justify-center">
-          {canQuickBioUnlock ? <Fingerprint className="w-7 h-7" /> : <Lock className="w-6 h-6" />}
+        <div
+          onClick={() => {
+            if (bioEnrolled && !bioBusy) void unlockWithBiometric(biometric.label);
+          }}
+          title={bioEnrolled ? `Tap to scan ${biometric.label} again` : undefined}
+          className={`w-14 h-14 mx-auto rounded-full bg-[#EAFF87] text-[#1B201C] flex items-center justify-center ${
+            bioEnrolled ? "cursor-pointer" : ""
+          } ${bioBusy ? "animate-pulse" : ""}`}
+        >
+          {bioEnrolled ? <Fingerprint className="w-7 h-7" /> : <Lock className="w-6 h-6" />}
         </div>
         <h2 className="text-xl font-bold">Encrypted Password Vault</h2>
         <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-          {exists
-            ? canQuickBioUnlock
-              ? `Use ${biometric.label} or your master password to decrypt your AES-256-GCM vault.`
+          {bioBusy && bioEnrolled
+            ? `Waiting for ${biometric.label}… place your finger on the sensor.`
+            : exists
+            ? bioEnrolled
+              ? justLocked
+                ? `Vault locked. Tap the fingerprint icon for ${biometric.label} or enter your master password.`
+                : `${biometric.label} prompts automatically — or enter your master password below.`
               : "Enter your master password to decrypt your AES-256-GCM vault."
             : "Choose a master password to create your local AES-256-GCM encrypted vault."}
         </p>
-
-        {canQuickBioUnlock && (
-          <>
-            <button
-              onClick={() => void unlockWithBiometric()}
-              disabled={bioBusy}
-              className="vk-btn-lime w-full py-3 text-sm font-semibold cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              <Fingerprint className="w-5 h-5" />
-              {bioBusy ? `Waiting for ${biometric.label}…` : `Unlock with ${biometric.label}`}
-            </button>
-            <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--vk-ink-3)" }}>
-              <span className="h-px flex-1" style={{ background: "var(--vk-border)" }} />
-              <span>or use master password</span>
-              <span className="h-px flex-1" style={{ background: "var(--vk-border)" }} />
-            </div>
-          </>
-        )}
 
         <input
           type="password"
@@ -358,7 +362,7 @@ export function VaultView() {
               className="rounded cursor-pointer"
             />
             <Fingerprint className="w-3.5 h-3.5" style={{ color: "var(--vk-accent)" }} />
-            <span>Enable {biometric.label} unlock on this PC</span>
+            <span>Auto-unlock with {biometric.label} on this PC</span>
           </label>
         )}
 
@@ -367,10 +371,10 @@ export function VaultView() {
         <button
           onClick={() => void unlock()}
           disabled={bioBusy}
-          className={`${canQuickBioUnlock ? "vk-btn-outline" : "vk-btn-lime"} w-full py-2.5 text-sm cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60`}
+          className="vk-btn-lime w-full py-2.5 text-sm cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60"
         >
           <Unlock className="w-4 h-4" />{" "}
-          {bioBusy ? `Verifying ${biometric.label}…` : exists ? "Unlock Vault" : "Create & Unlock"}
+          {bioBusy ? `Verifying ${biometric.label}…` : exists ? "Unlock with Master Password" : "Create & Unlock"}
         </button>
       </div>
     );

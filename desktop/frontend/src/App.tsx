@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
+  CloudDownload,
   Dumbbell,
+  ExternalLink,
   FileText,
   Headphones,
   LayoutDashboard,
@@ -12,6 +14,7 @@ import {
   Pause,
   Play,
   QrCode,
+  RefreshCw,
   Settings as SettingsIcon,
   SkipForward,
   Smartphone,
@@ -22,13 +25,14 @@ import {
 import { api } from "./api";
 import { AssistantView } from "./components/AssistantView";
 import { BoardView } from "./components/BoardView";
+import { MarkdownChangelog } from "./components/MarkdownChangelog";
 import { FocusView, MoneyView, VaultView } from "./components/MoneyVaultFocusViews";
 import { NotesView } from "./components/NotesView";
 import { PhonePairGate } from "./components/PhonePairGate";
 import { SettingsView, SupportView } from "./components/SupportSettingsViews";
 import { VoxbanAvatar } from "./components/VoxbanAvatar";
 import { type MusicController, WorkoutMusicView } from "./components/WorkoutMusicView";
-import type { AppState, PairInfoResponse, WorkoutTrack } from "./types";
+import type { AppState, PairInfoResponse, ReleaseInfo, WorkoutTrack } from "./types";
 import { stageColorHex } from "./types";
 
 type Section = "HOME" | "BOARD" | "ASSISTANT" | "WORKOUT" | "NOTES" | "MONEY" | "VAULT" | "FOCUS" | "SUPPORT" | "SETTINGS";
@@ -49,6 +53,8 @@ const NAV_ITEMS: Array<{ id: Section; label: string; icon: typeof LayoutDashboar
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [pairInfo, setPairInfo] = useState<PairInfoResponse | null>(null);
+  const [mandatoryUpdate, setMandatoryUpdate] = useState<ReleaseInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [standaloneBypass, setStandaloneBypass] = useState(false);
   const [pairModalOpen, setPairModalOpen] = useState(false);
   const [section, setSection] = useState<Section>("HOME");
@@ -61,8 +67,25 @@ export default function App() {
   const [queueIdx, setQueueIdx] = useState(-1);
   const [playing, setPlaying] = useState(false);
   const [loadingAudio, setLoadingAudio] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [posSec, setPosSec] = useState(0);
   const [durSec, setDurSec] = useState(0);
+
+  const checkMandatoryUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    try {
+      const res = await api.checkUpdates();
+      if (res.ok && res.release?.updateAvailable) {
+        setMandatoryUpdate(res.release);
+      } else if (res.ok && res.release && !res.release.updateAvailable) {
+        setMandatoryUpdate(null);
+      }
+    } catch {
+      // Offline: do not permanently lock out without a confirmed newer GitHub release
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     const [st, pair] = await Promise.all([api.getState(), api.pairInfo()]);
@@ -72,13 +95,25 @@ export default function App() {
 
   useEffect(() => {
     void loadAll();
+    void checkMandatoryUpdate();
+    let lastFocusCheck = Date.now();
+    const onFocus = () => {
+      if (Date.now() - lastFocusCheck > 60_000) {
+        lastFocusCheck = Date.now();
+        void checkMandatoryUpdate();
+      }
+    };
+    window.addEventListener("focus", onFocus);
     const ws = api.connectWs((evt) => {
       if (evt.event === "paired" || evt.event === "unlinked" || evt.event === "state_updated") {
         void loadAll();
       }
     });
-    return () => ws.close();
-  }, [loadAll]);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      ws.close();
+    };
+  }, [loadAll, checkMandatoryUpdate]);
 
   // Apply light/dark theme matching Android ThemeMode
   useEffect(() => {
@@ -101,13 +136,19 @@ export default function App() {
     setQueueIdx(idx);
     setCurrentTrack(t);
     setLoadingAudio(true);
+    setAudioError(null);
     setPosSec(0);
     setDurSec(t.durationSec || 0);
 
     const audio = audioRef.current;
     if (audio) {
       audio.src = api.streamUrl(t.videoId);
-      audio.play().catch(() => {});
+      audio.load();
+      audio.play().catch((err) => {
+        setLoadingAudio(false);
+        setPlaying(false);
+        setAudioError(err instanceof Error ? err.message : "Could not start audio playback.");
+      });
     }
 
     // Update browser Media Session controls (Windows media overlay + media keys!)
@@ -138,6 +179,7 @@ export default function App() {
     queue,
     playing,
     loading: loadingAudio,
+    error: audioError,
     positionSec: posSec,
     durationSec: durSec,
     playTrack: startTrack,
@@ -169,6 +211,69 @@ export default function App() {
         <div className="flex flex-col items-center gap-3">
           <VoxbanAvatar size={56} mood="thinking" />
           <p className="text-sm" style={{ color: "var(--vk-ink-2)" }}>Starting Voxban Rust Engine…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Mandatory Update Gate: block usage when a newer GitHub Release is available
+  if (mandatoryUpdate) {
+    const primaryDownloadUrl = isMac
+      ? mandatoryUpdate.macDownloadUrl || mandatoryUpdate.htmlUrl
+      : mandatoryUpdate.windowsDownloadUrl || mandatoryUpdate.htmlUrl;
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--vk-bg)" }}>
+        <div className="max-w-lg w-full vk-card p-7 space-y-5 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full bg-[#EAFF87] text-[#1B201C] flex items-center justify-center shrink-0">
+              <CloudDownload className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Update Required</h1>
+              <p className="text-xs font-mono" style={{ color: "var(--vk-ink-2)" }}>
+                v{mandatoryUpdate.currentVersion} → {mandatoryUpdate.latestTag}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--vk-ink-2)" }}>
+            A newer version of Voxban Desktop is required before continuing. Installing the update keeps all your
+            saved boards, notes, reminders, music downloads, and encrypted vault data intact.
+          </p>
+          {mandatoryUpdate.notes && (
+            <div
+              className="p-4 rounded-2xl max-h-72 overflow-y-auto"
+              style={{ background: "var(--vk-surface)", border: "1px solid var(--vk-border)" }}
+            >
+              <MarkdownChangelog markdown={mandatoryUpdate.notes} />
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2.5 pt-1">
+            <a
+              href={primaryDownloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="vk-btn-lime flex-1 py-3 px-4 text-sm font-semibold no-underline inline-flex items-center justify-center gap-2"
+            >
+              <CloudDownload className="w-4 h-4" />
+              {isMac ? "Download macOS Update (.dmg)" : "Download Windows Update (.exe)"}
+            </a>
+            <a
+              href={mandatoryUpdate.htmlUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="vk-btn-outline py-3 px-4 text-xs no-underline inline-flex items-center justify-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Releases
+            </a>
+          </div>
+          <button
+            onClick={() => void checkMandatoryUpdate()}
+            disabled={checkingUpdate}
+            className="w-full vk-btn-outline py-2 text-xs cursor-pointer inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
+            {checkingUpdate ? "Checking version…" : "Re-check version"}
+          </button>
         </div>
       </div>
     );
@@ -208,10 +313,16 @@ export default function App() {
         onPlaying={() => {
           setPlaying(true);
           setLoadingAudio(false);
+          setAudioError(null);
         }}
         onPause={() => setPlaying(false)}
         onWaiting={() => setLoadingAudio(true)}
         onCanPlay={() => setLoadingAudio(false)}
+        onError={() => {
+          setLoadingAudio(false);
+          setPlaying(false);
+          setAudioError("Could not play this audio stream. Try downloading the track or picking another song.");
+        }}
         onTimeUpdate={(e) => {
           const a = e.currentTarget;
           setPosSec(a.currentTime);

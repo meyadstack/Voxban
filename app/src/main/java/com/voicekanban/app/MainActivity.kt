@@ -47,6 +47,12 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         if (vm.locked.value && vm.state.value.settings.biometricLock) unlock()
+        com.voicekanban.app.update.AppUpdater.checkForUpdate(this, manual = false, forceCheck = true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        com.voicekanban.app.data.Repository.get(this).flush()
     }
 
     private var prompting = false

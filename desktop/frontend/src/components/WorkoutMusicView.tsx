@@ -31,6 +31,7 @@ export interface MusicController {
   queue: WorkoutTrack[];
   playing: boolean;
   loading: boolean;
+  error: string | null;
   positionSec: number;
   durationSec: number;
   playTrack: (t: WorkoutTrack, list?: WorkoutTrack[]) => void;
@@ -302,6 +303,11 @@ export function WorkoutMusicView({ state, onSaveState, music, onReloadState }: P
                 <SkipForward className="w-5 h-5" />
               </button>
             </div>
+            {music.error && (
+              <div className="text-xs text-center" style={{ color: "var(--vk-danger)" }}>
+                {music.error}
+              </div>
+            )}
           </div>
         )}
 

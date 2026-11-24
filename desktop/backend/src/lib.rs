@@ -117,9 +117,48 @@ mod tests {
 
     #[test]
     fn semver_updater_compares_correctly() {
-        assert!(is_newer_version("v3.5.0", "3.4.2"));
-        assert!(!is_newer_version("v3.4.2", "3.4.2"));
-        assert!(!is_newer_version("3.3.0", "3.4.2"));
+        assert!(is_newer_version("v3.6.0", "3.5.0"));
+        assert!(!is_newer_version("v3.5.0", "3.5.0"));
+        assert!(!is_newer_version("3.4.2", "3.5.0"));
+    }
+
+    #[test]
+    fn storage_recovers_user_data_without_injecting_dummy_items() {
+        let tmp = std::env::temp_dir().join(format!("voxban-migrate-{}", models::new_id("m")));
+        let _ = std::fs::create_dir_all(&tmp);
+        // Simulate an older v3.4.0 state.json with hex Stage.color AND a broken unrelated field
+        let legacy_json = r##"{
+            "workspace": {
+                "boards": [{
+                    "id": "b-user",
+                    "title": "My Real Work",
+                    "stages": [{ "id": "todo", "title": "To Do", "color": "#5258D6", "cards": [
+                        { "id": "c-real", "text": "Keep my real task", "priority": "HIGH" }
+                    ]}],
+                    "createdAt": 1700000000000
+                }],
+                "activeBoardId": "b-user"
+            },
+            "notes": [{ "id": "n-real", "title": "My Real Note", "body": "Do not wipe me!" }],
+            "calendarReminders": [{ "id": "r-real", "title": "Real Reminder", "at": 1700000000000 }],
+            "transactions": "corrupt-type-from-future-version"
+        }"##;
+        std::fs::write(tmp.join("state.json"), legacy_json).unwrap();
+        let st = storage::Storage::new(Some(tmp.clone())).load_state();
+        assert_eq!(st.workspace.boards.len(), 1);
+        assert_eq!(st.workspace.boards[0].title, "My Real Work");
+        assert_eq!(st.workspace.boards[0].stages[0].cards[0].text, "Keep my real task");
+        assert_eq!(st.notes.len(), 1);
+        assert_eq!(st.notes[0].title, "My Real Note");
+        assert_eq!(st.calendar_reminders.len(), 1);
+        assert_eq!(st.calendar_reminders[0].title, "Real Reminder");
+
+        // Fresh default state has ZERO dummy tasks/notes/reminders
+        let fresh = models::AppState::default();
+        assert!(fresh.workspace.boards[0].stages.iter().all(|s| s.cards.is_empty()));
+        assert!(fresh.notes.is_empty());
+        assert!(fresh.calendar_reminders.is_empty());
+        let _ = std::fs::remove_dir_all(tmp);
     }
 
     #[test]

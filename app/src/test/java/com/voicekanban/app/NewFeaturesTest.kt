@@ -296,6 +296,25 @@ class NewFeaturesTest {
     }
 
     @Test
+    fun mandatoryUpdateGateEnforcesAvailableAndDownloadingStates() {
+        val rel = com.voicekanban.app.update.ReleaseInfo(
+            tagName = "v3.5.0",
+            version = "3.5.0",
+            title = "Voxban 3.5.0",
+            notes = "Mandatory update",
+            apkUrl = "https://example.com/Voxban.apk",
+            apkName = "Voxban-3.5.0.apk",
+            apkSize = 40_000_000L,
+        )
+        assertTrue(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Available(rel)))
+        assertTrue(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Downloading(rel, 100L, 1000L)))
+        assertTrue(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Error("Network drop", rel)))
+        assertFalse(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Idle))
+        assertFalse(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.UpToDate(1234L)))
+        assertFalse(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Error("Offline", null)))
+    }
+
+    @Test
     fun liveMusicSearchAndStreamExtractionWhenEnabled() {
         if (System.getenv("VOXBAN_LIVE_NET_TEST") != "true") return
         kotlinx.coroutines.runBlocking {

@@ -73,7 +73,8 @@ object AppUpdater {
     private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     private const val PREFS = "app_updater"
     private const val KEY_LAST_CHECK = "last_check_ms"
-    private const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60_000L // 6 hours
+    private const val AUTO_CHECK_INTERVAL_MS = 15 * 60_000L // 15 min background re-check
+    private const val RESUME_CHECK_THROTTLE_MS = 30_000L // 30 sec throttle on resume
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -95,20 +96,23 @@ object AppUpdater {
 
     val currentVersion: String get() = BuildConfig.VERSION_NAME
 
-    /** Checks GitHub Releases for a newer version. Automatic checks are throttled and fail silently. */
+    /** Checks GitHub Releases for a newer version. Updates are mandatory whenever a newer release exists. */
     fun checkForUpdate(
         context: Context,
         manual: Boolean = false,
         dismissedTag: String = "",
+        forceCheck: Boolean = false,
     ) {
         val cur = _state.value
         if (cur is UpdateState.Checking || cur is UpdateState.Downloading) return
+        if (!manual && (cur is UpdateState.Available || cur is UpdateState.ReadyToInstall)) return
         val appCtx = context.applicationContext
         val prefs = appCtx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (!manual) {
             val last = prefs.getLong(KEY_LAST_CHECK, 0L)
-            if (now - last < AUTO_CHECK_INTERVAL_MS && cur !is UpdateState.Idle) return
+            val interval = if (forceCheck) RESUME_CHECK_THROTTLE_MS else AUTO_CHECK_INTERVAL_MS
+            if (now - last < interval && cur !is UpdateState.Idle) return
         }
 
         activeJob?.cancel()
@@ -118,16 +122,12 @@ object AppUpdater {
                 val release = fetchLatestRelease()
                 prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
                 if (release != null && isNewerVersion(release.version, currentVersion)) {
-                    if (!manual && dismissedTag.equals(release.tagName, ignoreCase = true)) {
-                        _state.value = UpdateState.Idle
+                    // Mandatory update: never skip based on dismissedTag.
+                    val cached = cachedApkFile(appCtx, release)
+                    if (cached.exists() && isValidApkForApp(appCtx, cached) && verifySha256IfPresent(cached, release.sha256)) {
+                        _state.value = UpdateState.ReadyToInstall(release, cached)
                     } else {
-                        // Reuse already-downloaded verified APK if present
-                        val cached = cachedApkFile(appCtx, release)
-                        if (cached.exists() && isValidApkForApp(appCtx, cached) && verifySha256IfPresent(cached, release.sha256)) {
-                            _state.value = UpdateState.ReadyToInstall(release, cached)
-                        } else {
-                            _state.value = UpdateState.Available(release)
-                        }
+                        _state.value = UpdateState.Available(release)
                     }
                 } else {
                     _state.value = if (manual) UpdateState.UpToDate(System.currentTimeMillis()) else UpdateState.Idle
@@ -236,9 +236,19 @@ object AppUpdater {
     }
 
     fun dismissBanner() {
-        if (_state.value is UpdateState.Available || _state.value is UpdateState.Error || _state.value is UpdateState.UpToDate) {
+        val cur = _state.value
+        // Only dismiss non-mandatory status states; never allow bypassing a required update.
+        if (cur is UpdateState.UpToDate || (cur is UpdateState.Error && cur.release == null)) {
             _state.value = UpdateState.Idle
         }
+    }
+
+    fun isUpdateRequired(state: UpdateState = _state.value): Boolean = when (state) {
+        is UpdateState.Available,
+        is UpdateState.Downloading,
+        is UpdateState.ReadyToInstall -> true
+        is UpdateState.Error -> state.release != null
+        else -> false
     }
 
     fun canInstallPackages(context: Context): Boolean =
@@ -250,9 +260,10 @@ object AppUpdater {
         runCatching { context.startActivity(intent) }
     }
 
-    /** Launches Android's system package installer for the downloaded APK. */
+    /** Flushes user state safely to disk, then launches Android's system package installer for the downloaded APK. */
     fun installApk(context: Context, apkFile: File): Boolean {
         if (!apkFile.exists()) return false
+        runCatching { com.voicekanban.app.data.Repository.get(context).flush() }
         if (!canInstallPackages(context)) {
             openUnknownSourcesSettings(context)
             return false

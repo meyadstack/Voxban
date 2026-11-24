@@ -63,6 +63,10 @@ impl Storage {
         self.data_dir.join("state.json")
     }
 
+    fn state_backup_path(&self) -> PathBuf {
+        self.data_dir.join("state.backup.json")
+    }
+
     fn keys_path(&self) -> PathBuf {
         self.data_dir.join("keys.json")
     }
@@ -75,18 +79,40 @@ impl Storage {
         self.data_dir.join("vault.enc")
     }
 
+    /// Loads user state across any version update without ever silently resetting to dummy data.
+    /// Falls back through: full parse -> section-by-section JSON migration -> `state.backup.json`.
     pub fn load_state(&self) -> AppState {
         let path = self.state_path();
         if let Ok(raw) = fs::read_to_string(&path) {
             if let Ok(st) = serde_json::from_str::<AppState>(&raw) {
-                return st;
+                return sanitize_state(st);
+            }
+            // Never discard existing user data on schema evolution: preserve raw copy & migrate section-by-section
+            let _ = fs::write(self.data_dir.join("state.pre-migration.json"), &raw);
+            if let Some(migrated) = recover_state_from_json(&raw) {
+                let sanitized = sanitize_state(migrated);
+                let _ = self.save_state(&sanitized);
+                return sanitized;
+            }
+        }
+        // Fallback to rolling backup if primary state.json was interrupted mid-write
+        if let Ok(raw) = fs::read_to_string(self.state_backup_path()) {
+            if let Ok(st) = serde_json::from_str::<AppState>(&raw) {
+                return sanitize_state(st);
+            }
+            if let Some(migrated) = recover_state_from_json(&raw) {
+                return sanitize_state(migrated);
             }
         }
         AppState::default()
     }
 
     pub fn save_state(&self, state: &AppState) -> std::io::Result<()> {
-        write_atomic(&self.state_path(), &serde_json::to_vec_pretty(state)?)
+        let primary = self.state_path();
+        if primary.exists() {
+            let _ = fs::copy(&primary, self.state_backup_path());
+        }
+        write_atomic(&primary, &serde_json::to_vec_pretty(state)?)
     }
 
     pub fn load_keys(&self) -> HashMap<String, String> {
@@ -175,6 +201,127 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> [u8; 32] {
     let mut key = [0u8; 32];
     pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), salt, 120_000, &mut key);
     key
+}
+
+fn sanitize_state(mut st: AppState) -> AppState {
+    if st.workspace.boards.is_empty() {
+        st.workspace = crate::models::Workspace::default();
+    } else if !st
+        .workspace
+        .boards
+        .iter()
+        .any(|b| b.id == st.workspace.active_board_id)
+    {
+        st.workspace.active_board_id = st.workspace.boards[0].id.clone();
+    }
+    if st.workout_types.is_empty() {
+        st.workout_types = crate::models::default_workout_types();
+    }
+    st
+}
+
+/// Section-by-section resilient recovery so a schema change in one field never wipes user data.
+pub fn recover_state_from_json(raw: &str) -> Option<AppState> {
+    let val: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let obj = val.as_object()?;
+    let mut st = AppState::default();
+    let mut recovered_any = false;
+
+    if let Some(v) = obj.get("workspace") {
+        if let Ok(ws) = serde_json::from_value(v.clone()) {
+            st.workspace = ws;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("settings") {
+        if let Ok(s) = serde_json::from_value(v.clone()) {
+            st.settings = s;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("sessions") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.sessions = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("activeSessionId") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.active_session_id = x;
+        }
+    }
+    if let Some(v) = obj.get("voiceChat") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.voice_chat = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("notes") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.notes = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("transactions") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.transactions = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("budgets") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.budgets = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("workoutTypes") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.workout_types = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("workouts") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.workouts = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("focusSessions") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.focus_sessions = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("calendarReminders") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.calendar_reminders = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("savedWorkoutTracks") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.saved_workout_tracks = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("downloadedWorkoutTracks") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.downloaded_workout_tracks = x;
+            recovered_any = true;
+        }
+    }
+    if let Some(v) = obj.get("supportTickets") {
+        if let Ok(x) = serde_json::from_value(v.clone()) {
+            st.support_tickets = x;
+            recovered_any = true;
+        }
+    }
+
+    if recovered_any {
+        Some(st)
+    } else {
+        None
+    }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

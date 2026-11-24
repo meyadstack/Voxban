@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
 const STREAM_CACHE_TTL: Duration = Duration::from_secs(3 * 60 * 60);
+const VISITOR_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[derive(Debug, Clone)]
 pub struct ResolvedStream {
@@ -25,6 +26,7 @@ pub struct MusicEngine {
     http: Client,
     cache_dir: PathBuf,
     downloads_dir: PathBuf,
+    visitor_data: RwLock<Option<(Instant, String)>>,
     search_cache: RwLock<HashMap<String, (Instant, Vec<WorkoutTrack>)>>,
     stream_cache: RwLock<HashMap<String, ResolvedStream>>,
 }
@@ -32,16 +34,58 @@ pub struct MusicEngine {
 impl MusicEngine {
     pub fn new(cache_dir: PathBuf, downloads_dir: PathBuf) -> Arc<Self> {
         let http = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(45))
             .build()
             .expect("HTTP client");
         Arc::new(Self {
             http,
             cache_dir,
             downloads_dir,
+            visitor_data: RwLock::new(None),
             search_cache: RwLock::new(HashMap::new()),
             stream_cache: RwLock::new(HashMap::new()),
         })
+    }
+
+    pub fn http_client(&self) -> &Client {
+        &self.http
+    }
+
+    async fn get_visitor_data(&self, force_refresh: bool) -> String {
+        if !force_refresh {
+            let guard = self.visitor_data.read().await;
+            if let Some((at, vd)) = guard.as_ref() {
+                if at.elapsed() < VISITOR_CACHE_TTL && !vd.is_empty() {
+                    return vd.clone();
+                }
+            }
+        }
+        let body = json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB_REMIX",
+                    "clientVersion": "1.20260707.12.00"
+                }
+            }
+        });
+        if let Ok(resp) = self
+            .http
+            .post("https://music.youtube.com/youtubei/v1/visitor_id?prettyPrint=false")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0")
+            .json(&body)
+            .send()
+            .await
+        {
+            if let Ok(val) = resp.json::<Value>().await {
+                if let Some(vd) = val.pointer("/responseContext/visitorData").and_then(|v| v.as_str()) {
+                    if !vd.is_empty() {
+                        *self.visitor_data.write().await = Some((Instant::now(), vd.to_string()));
+                        return vd.to_string();
+                    }
+                }
+            }
+        }
+        String::new()
     }
 
     pub fn downloads_dir(&self) -> &Path {
@@ -137,7 +181,8 @@ impl MusicEngine {
         parse_radio_tracks(&root, video_id)
     }
 
-    /// Resolves a direct audio stream URL using InnerTube player clients (ANDROID_VR -> IOS -> ANDROID_MUSIC).
+    /// Resolves and live-verifies a direct audio stream URL using InnerTube clients
+    /// (VISIONOS 1.02 -> VISIONOS 0.1 -> ANDROID_VR 1.65.10 -> IOS 20.10.4) with fresh visitorData.
     pub async fn resolve_audio_stream(&self, video_id: &str, force_refresh: bool) -> Result<ResolvedStream, String> {
         if !force_refresh {
             let guard = self.stream_cache.read().await;
@@ -148,14 +193,47 @@ impl MusicEngine {
             }
         }
 
-        let clients = [
+        let visitor_data = self.get_visitor_data(force_refresh).await;
+
+        let clients: Vec<(&str, &str, &str, Value)> = vec![
             (
-                "ANDROID_VR",
-                "1.60.19",
-                "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+                "101",
+                "1.02",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+                json!({
+                    "clientName": "VISIONOS",
+                    "clientVersion": "1.02",
+                    "osName": "visionOS",
+                    "osVersion": "26.5.23O471",
+                    "deviceMake": "Apple",
+                    "deviceModel": "RealityDevice17,1",
+                    "hl": "en",
+                    "gl": "US"
+                }),
+            ),
+            (
+                "101",
+                "0.1",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+                json!({
+                    "clientName": "VISIONOS",
+                    "clientVersion": "0.1",
+                    "osName": "VISION_OS",
+                    "osVersion": "1.3",
+                    "deviceMake": "Apple",
+                    "deviceModel": "RealityDevice14,1",
+                    "platform": "MOBILE",
+                    "hl": "en",
+                    "gl": "US"
+                }),
+            ),
+            (
+                "28",
+                "1.65.10",
+                "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
                 json!({
                     "clientName": "ANDROID_VR",
-                    "clientVersion": "1.60.19",
+                    "clientVersion": "1.65.10",
                     "deviceMake": "Oculus",
                     "deviceModel": "Quest 3",
                     "osName": "Android",
@@ -166,7 +244,7 @@ impl MusicEngine {
                 }),
             ),
             (
-                "IOS",
+                "5",
                 "20.10.4",
                 "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
                 json!({
@@ -180,34 +258,33 @@ impl MusicEngine {
                     "gl": "US"
                 }),
             ),
-            (
-                "VISIONOS",
-                "0.1",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-                json!({
-                    "clientName": "VISIONOS",
-                    "clientVersion": "0.1",
-                    "hl": "en",
-                    "gl": "US"
-                }),
-            ),
         ];
 
         let mut last_err = String::from("No playable audio format found");
-        for (_name, _ver, ua, client_ctx) in clients {
+        for (client_id, client_ver, ua, mut client_ctx) in clients {
+            if !visitor_data.is_empty() {
+                if let Some(obj) = client_ctx.as_object_mut() {
+                    obj.insert("visitorData".into(), json!(visitor_data));
+                }
+            }
             let body = json!({
                 "context": { "client": client_ctx },
                 "videoId": video_id,
                 "contentCheckOk": true,
                 "racyCheckOk": true
             });
-            let res = self
+            let mut req = self
                 .http
                 .post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
                 .header("User-Agent", ua)
-                .json(&body)
-                .send()
-                .await;
+                .header("X-YouTube-Client-Name", client_id)
+                .header("X-YouTube-Client-Version", client_ver)
+                .header("Origin", "https://www.youtube.com")
+                .header("Referer", "https://www.youtube.com/");
+            if !visitor_data.is_empty() {
+                req = req.header("X-Goog-Visitor-Id", &visitor_data);
+            }
+            let res = req.json(&body).send().await;
 
             let Ok(resp) = res else {
                 last_err = format!("Player request failed: {}", res.unwrap_err());
@@ -220,14 +297,57 @@ impl MusicEngine {
             let Ok(json_val) = resp.json::<Value>().await else {
                 continue;
             };
-            if let Some(best) = pick_best_audio_format(&json_val, ua) {
-                let mut guard = self.stream_cache.write().await;
-                guard.insert(video_id.to_string(), best.clone());
-                return Ok(best);
+            let candidates = rank_audio_formats(&json_val, ua);
+            for candidate in candidates.into_iter().take(3) {
+                if self.probe_stream(&candidate).await {
+                    let mut guard = self.stream_cache.write().await;
+                    guard.insert(video_id.to_string(), candidate.clone());
+                    return Ok(candidate);
+                } else {
+                    last_err = "Audio stream rejected by host (HTTP 403); trying next client".into();
+                }
             }
         }
 
         Err(last_err)
+    }
+
+    /// Verifies both the head AND tail byte ranges of a candidate stream URL before caching/serving it.
+    async fn probe_stream(&self, stream: &ResolvedStream) -> bool {
+        let head = self
+            .http
+            .get(&stream.url)
+            .header("User-Agent", &stream.user_agent)
+            .header("Range", "bytes=0-1023")
+            .send()
+            .await;
+        let head_ok = match head {
+            Ok(r) => r.status().is_success() || r.status().as_u16() == 206,
+            Err(_) => false,
+        };
+        if !head_ok {
+            return false;
+        }
+        if let Some(total) = stream.content_length.filter(|&n| n > 4096) {
+            let tail_start = total - 1024;
+            let tail_end = total - 1;
+            let tail = self
+                .http
+                .get(&stream.url)
+                .header("User-Agent", &stream.user_agent)
+                .header("Range", format!("bytes={tail_start}-{tail_end}"))
+                .send()
+                .await;
+            return match tail {
+                Ok(r) => r.status().is_success() || r.status().as_u16() == 206,
+                Err(_) => false,
+            };
+        }
+        true
+    }
+
+    pub async fn invalidate_stream(&self, video_id: &str) {
+        self.stream_cache.write().await.remove(video_id);
     }
 
     pub fn cached_audio_path(&self, video_id: &str) -> Option<(PathBuf, String)> {
@@ -401,12 +521,15 @@ impl MusicEngine {
     }
 }
 
-fn pick_best_audio_format(root: &Value, ua: &str) -> Option<ResolvedStream> {
-    let formats = root
+fn rank_audio_formats(root: &Value, ua: &str) -> Vec<ResolvedStream> {
+    let Some(formats) = root
         .pointer("/streamingData/adaptiveFormats")
-        .and_then(|v| v.as_array())?;
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
 
-    let mut best: Option<(u64, ResolvedStream)> = None;
+    let mut ranked: Vec<(u64, ResolvedStream)> = Vec::new();
     for f in formats {
         let mime = f.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
         if !mime.starts_with("audio/") {
@@ -423,23 +546,21 @@ fn pick_best_audio_format(root: &Value, ua: &str) -> Option<ResolvedStream> {
             .and_then(|s| s.parse::<u64>().ok())
             .or_else(|| f.get("contentLength").and_then(|v| v.as_u64()));
 
-        // Prefer audio/mp4 (universal browser & Windows compatibility) or audio/webm opus
-        let bonus = if mime.starts_with("audio/mp4") { 50_000 } else { 0 };
-        let score = bitrate + bonus;
-        if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
-            best = Some((
-                score,
-                ResolvedStream {
-                    url: url.to_string(),
-                    mime_type: mime.split(';').next().unwrap_or("audio/mp4").trim().to_string(),
-                    content_length,
-                    user_agent: ua.to_string(),
-                    cached_at: Instant::now(),
-                },
-            ));
-        }
+        // Strongly prefer audio/mp4 (AAC M4A) — universally playable in macOS WKWebView, Windows WebView2, Safari & Chrome!
+        let bonus = if mime.starts_with("audio/mp4") { 500_000 } else { 0 };
+        ranked.push((
+            bitrate + bonus,
+            ResolvedStream {
+                url: url.to_string(),
+                mime_type: mime.split(';').next().unwrap_or("audio/mp4").trim().to_string(),
+                content_length,
+                user_agent: ua.to_string(),
+                cached_at: Instant::now(),
+            },
+        ));
     }
-    best.map(|(_, s)| s)
+    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    ranked.into_iter().map(|(_, s)| s).collect()
 }
 
 pub fn parse_search_tracks(root: &Value) -> Vec<WorkoutTrack> {

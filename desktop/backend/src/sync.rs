@@ -183,6 +183,11 @@ fn merge_boards(local: &[Board], remote: &[Board]) -> Vec<Board> {
     if remote.is_empty() {
         return local.to_vec();
     }
+    // If local PC only has an empty starter board (0 cards), adopt the phone's real boards directly
+    // so pairing never injects an extra empty board alongside the user's real workspace.
+    if local.len() == 1 && local[0].stages.iter().all(|s| s.cards.is_empty()) {
+        return remote.to_vec();
+    }
     let mut map: HashMap<String, Board> = HashMap::new();
     for b in local {
         map.insert(b.id.clone(), b.clone());

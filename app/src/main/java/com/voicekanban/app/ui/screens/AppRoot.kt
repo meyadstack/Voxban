@@ -120,7 +120,16 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
     val r = VK.responsive
     val ctx = LocalContext.current
 
+    // Always check GitHub Releases on launch; mandatory update blocks outdated builds cleanly.
+    LaunchedEffect(Unit) {
+        AppUpdater.checkForUpdate(ctx, manual = false, forceCheck = true)
+    }
+
     if (locked) { LockScreen(onUnlock); return }
+    if (AppUpdater.isUpdateRequired(updateState)) {
+        MandatoryUpdateScreen(state = updateState)
+        return
+    }
     if (!app.settings.onboarded) { OnboardingScreen(vm); return }
 
     var settingsOpen by remember { mutableStateOf(false) }
@@ -141,13 +150,6 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
         if (pendingOpenPair) {
             pairOpen = true
             vm.clearOpenPairDesktop()
-        }
-    }
-
-    // Check GitHub Releases automatically on launch when enabled.
-    LaunchedEffect(app.settings.autoCheckUpdates) {
-        if (app.settings.autoCheckUpdates) {
-            AppUpdater.checkForUpdate(ctx, manual = false, dismissedTag = app.settings.dismissedUpdateTag)
         }
     }
 

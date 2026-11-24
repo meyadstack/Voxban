@@ -1,5 +1,8 @@
 package com.voicekanban.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -54,6 +58,247 @@ import com.voicekanban.app.ui.theme.VK
 import com.voicekanban.app.update.AppUpdater
 import com.voicekanban.app.update.ReleaseInfo
 import com.voicekanban.app.update.UpdateState
+
+/**
+ * Full-screen mandatory update gate. Blocks all access to the app (including Back navigation)
+ * until the user downloads and installs the required release. Existing user data stays intact.
+ */
+@Composable
+fun MandatoryUpdateScreen(state: UpdateState) {
+    val c = VK.colors
+    val ctx = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current
+    var canInstall by remember { mutableStateOf(AppUpdater.canInstallPackages(ctx)) }
+    var pendingAutoInstall by remember { mutableStateOf(false) }
+
+    // Block hardware/gesture Back so an outdated app cannot bypass the update requirement.
+    BackHandler(enabled = true) {}
+
+    DisposableEffect(lifecycle, state) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) {
+                val allowed = AppUpdater.canInstallPackages(ctx)
+                canInstall = allowed
+                if (allowed && pendingAutoInstall && state is UpdateState.ReadyToInstall) {
+                    pendingAutoInstall = false
+                    AppUpdater.installApk(ctx, state.apkFile)
+                }
+            }
+        }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+
+    val release: ReleaseInfo? = when (state) {
+        is UpdateState.Available -> state.release
+        is UpdateState.Downloading -> state.release
+        is UpdateState.ReadyToInstall -> state.release
+        is UpdateState.Error -> state.release
+        else -> null
+    }
+
+    Column(
+        Modifier.fillMaxSize().background(c.background)
+            .statusBarsPadding().navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+    ) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.size(58.dp).clip(CircleShape).background(c.limeTile),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (state is UpdateState.ReadyToInstall) Icons.Rounded.InstallMobile else Icons.Rounded.SystemUpdate,
+                    null,
+                    tint = c.onLime,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Update Required",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = c.ink,
+                )
+                Text(
+                    "A newer version of Voxban is available. You must update before continuing to use the app. All your saved tasks, notes, reminders, and vault data will be preserved.",
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = c.inkSecondary,
+                )
+            }
+
+            if (release != null) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.surface)
+                        .border(1.dp, c.border, RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "v${AppUpdater.currentVersion} → v${release.version}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
+                        color = c.ink,
+                    )
+                    if (release.apkSize > 0L) {
+                        Text(AppUpdater.formatBytes(release.apkSize), fontSize = 12.sp, color = c.inkSecondary)
+                    }
+                }
+
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.surface)
+                        .border(1.dp, c.border, RoundedCornerShape(22.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(
+                            Modifier.size(24.dp).clip(CircleShape).background(c.limeTile),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, null, tint = c.onLime, modifier = Modifier.size(14.dp))
+                        }
+                        Text("What’s new", style = MaterialTheme.typography.titleSmall, color = c.ink, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Box(
+                            Modifier.clip(CircleShape).background(c.surfaceWell).padding(horizontal = 8.dp, vertical = 2.dp),
+                        ) {
+                            Text(release.tagName, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = c.inkSecondary)
+                        }
+                    }
+                    ChangelogMarkdown(
+                        markdown = release.notes.ifBlank { "Required security, sync, and stability update (${release.tagName})." },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        when (state) {
+            is UpdateState.Available -> {
+                Button(
+                    onClick = {
+                        AppUpdater.downloadUpdate(ctx, state.release) { file ->
+                            if (AppUpdater.canInstallPackages(ctx)) AppUpdater.installApk(ctx, file)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                ) {
+                    Icon(Icons.Rounded.SystemUpdate, null, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Download & Update Now", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                if (state.release.htmlUrl.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(state.release.htmlUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
+                    ) { Text("Download from GitHub Browser", color = c.ink, fontSize = 13.sp) }
+                }
+            }
+
+            is UpdateState.Downloading -> {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.surface).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Downloading update…", color = c.ink, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        Text(
+                            if (state.totalBytes > 0L) "${AppUpdater.formatBytes(state.downloadedBytes)} / ${AppUpdater.formatBytes(state.totalBytes)}"
+                            else AppUpdater.formatBytes(state.downloadedBytes),
+                            fontSize = 12.sp,
+                            color = c.inkSecondary,
+                        )
+                    }
+                    if (state.progress >= 0f) {
+                        LinearProgressIndicator(
+                            progress = { state.progress },
+                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(CircleShape),
+                            color = c.voiceTertiary,
+                            trackColor = c.surfaceWell,
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(7.dp).clip(CircleShape))
+                    }
+                    OutlinedButton(
+                        onClick = { AppUpdater.cancelDownload() },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
+                        shape = CircleShape,
+                    ) { Text("Cancel download") }
+                }
+            }
+
+            is UpdateState.ReadyToInstall -> {
+                if (!canInstall) {
+                    InfoCard(
+                        Icons.Rounded.InstallMobile,
+                        "Allow installing updates",
+                        "Enable “Install unknown apps” for Voxban once, then press Back to install automatically.",
+                        c.accentText,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                Button(
+                    onClick = {
+                        if (AppUpdater.canInstallPackages(ctx)) {
+                            AppUpdater.installApk(ctx, state.apkFile)
+                        } else {
+                            pendingAutoInstall = true
+                            AppUpdater.openUnknownSourcesSettings(ctx)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                ) {
+                    Icon(Icons.Rounded.InstallMobile, null, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (canInstall) "Install v${state.release.version}" else "Allow & Install", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+
+            is UpdateState.Error -> {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.dangerSoft).padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.ErrorOutline, null, tint = c.danger, modifier = Modifier.size(18.dp))
+                    Text(state.message, color = c.danger, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        if (state.release != null) AppUpdater.downloadUpdate(ctx, state.release)
+                        else AppUpdater.checkForUpdate(ctx, manual = true)
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                ) { Text("Retry Download", fontWeight = FontWeight.Bold) }
+            }
+
+            else -> Unit
+        }
+    }
+}
 
 /** Compact in-app banner shown when a newer GitHub release is available or downloading. */
 @Composable
@@ -194,17 +439,6 @@ fun UpdateSheet(
                     Spacer(Modifier.width(8.dp))
                     Text("Download & update", fontWeight = FontWeight.SemiBold)
                 }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        vm.updateSettings { it.copy(dismissedUpdateTag = state.release.tagName) }
-                        AppUpdater.dismissBanner()
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
-                    shape = CircleShape,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
-                ) { Text("Remind me later", color = c.ink) }
             }
 
             is UpdateState.Downloading -> {

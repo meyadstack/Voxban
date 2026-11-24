@@ -405,7 +405,7 @@ export function SettingsView({
           <div>
             <h3 className="font-semibold text-sm">App Updates (GitHub Releases)</h3>
             <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-              Voxban Desktop v3.4.2 · checks github.com/meyadstack/Voxban
+              Voxban Desktop v3.5.0 · checks github.com/meyadstack/Voxban
             </p>
           </div>
           <button
