@@ -5,6 +5,13 @@ import android.app.TimePickerDialog
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +60,9 @@ import com.voicekanban.app.data.ReminderRepeat
 import com.voicekanban.app.reminders.Reminders
 import com.voicekanban.app.ui.MainViewModel
 import com.voicekanban.app.ui.components.Chip
+import com.voicekanban.app.ui.components.SwipeActionCard
+import com.voicekanban.app.ui.components.SwipeActionSpec
+import com.voicekanban.app.ui.components.SwipeStepContainer
 import com.voicekanban.app.ui.theme.VK
 import java.time.DayOfWeek
 import java.time.Instant
@@ -150,80 +160,100 @@ fun CalendarSheet(
     val reminderDotColor = c.voiceTertiary
 
     AppSheet("Calendar", "${b.title} · tasks & reminders", onDismiss = onDismiss) {
-        // Month header
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous month") { month = month.minusMonths(1) }
-            Text(
-                "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}",
-                style = MaterialTheme.typography.titleMedium,
-                color = c.ink,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-            )
-            HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month") { month = month.plusMonths(1) }
-        }
-        // Weekday labels (Monday first)
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp)) {
-            DayOfWeek.entries.forEach { d ->
-                Text(
-                    d.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
-                    Modifier.weight(1f),
-                    fontSize = 12.sp,
-                    color = c.inkTertiary,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-        // Day grid (responsive height so landscape / compact screens never trap the grid)
-        val first = month.atDay(1)
-        val lead = first.dayOfWeek.value - 1
-        val cells = List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
-        cells.chunked(7).forEach { week ->
-            Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
-                (week + List(7 - week.size) { null }).forEach { day ->
-                    val cellMod = if (compactHeight) Modifier.weight(1f).height(40.dp).padding(2.dp)
-                    else Modifier.weight(1f).aspectRatio(1f).heightIn(max = 50.dp).padding(2.dp)
-                    Box(cellMod, contentAlignment = Alignment.Center) {
-                        if (day != null) {
-                            val isSel = day == selected
-                            val isToday = day == today
-                            val dayTasks = byDay[day].orEmpty()
-                            val dayRems = remindersFor(day)
-                            val hasAny = dayTasks.isNotEmpty() || dayRems.isNotEmpty()
-                            val overdue = dayTasks.any { (card, s) -> !b.isDone(s.id) && (card.dueAt ?: 0) < System.currentTimeMillis() }
-                            Column(
-                                Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSel) c.limeTile else if (hasAny) c.raised else Color.Transparent)
-                                    .border(
-                                        1.dp,
-                                        if (isToday && !isSel) c.ink else if (hasAny && !isSel) c.border else Color.Transparent,
-                                        RoundedCornerShape(12.dp),
-                                    )
-                                    .clickable { selected = day },
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                Text(
-                                    "${day.dayOfMonth}",
-                                    fontSize = 13.sp,
-                                    color = if (isSel) c.onLime else c.ink,
-                                    fontWeight = if (isToday || isSel) FontWeight.Bold else FontWeight.Normal,
-                                )
-                                if (hasAny) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
-                                        if (dayRems.any { !it.done }) {
-                                            Box(
-                                                Modifier.size(5.dp).clip(CircleShape)
-                                                    .background(if (isSel) c.onLime else reminderDotColor),
-                                            )
-                                        }
-                                        dayTasks.take(if (dayRems.any { !it.done }) 2 else 3).forEach { (card, _) ->
-                                            Box(
-                                                Modifier.size(5.dp).clip(CircleShape)
-                                                    .background(if (overdue) c.high else c.priorityFg(card.priority)),
-                                            )
+        // Swipeable month header + calendar day grid (swipe left/right to glide between months)
+        SwipeStepContainer(
+            modifier = Modifier.fillMaxWidth(),
+            onSwipeLeft = { month = month.plusMonths(1) },
+            onSwipeRight = { month = month.minusMonths(1) },
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous month") { month = month.minusMonths(1) }
+                    Text(
+                        "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = c.ink,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                    )
+                    HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month") { month = month.plusMonths(1) }
+                }
+                // Weekday labels (Monday first)
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                    DayOfWeek.entries.forEach { d ->
+                        Text(
+                            d.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                            Modifier.weight(1f),
+                            fontSize = 12.sp,
+                            color = c.inkTertiary,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+                // Animated month grid transition
+                AnimatedContent(
+                    targetState = month,
+                    transitionSpec = {
+                        val dir = if (targetState.isAfter(initialState)) 1 else -1
+                        (fadeIn(tween(180)) + slideInHorizontally(tween(240)) { dir * it / 3 })
+                            .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -dir * it / 3 })
+                    },
+                    label = "calendarMonthSwipe",
+                ) { displayMonth ->
+                    Column(Modifier.fillMaxWidth()) {
+                        val first = displayMonth.atDay(1)
+                        val lead = first.dayOfWeek.value - 1
+                        val cells = List(lead) { null } + (1..displayMonth.lengthOfMonth()).map { displayMonth.atDay(it) }
+                        cells.chunked(7).forEach { week ->
+                            Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                                (week + List(7 - week.size) { null }).forEach { day ->
+                                    val cellMod = if (compactHeight) Modifier.weight(1f).height(40.dp).padding(2.dp)
+                                    else Modifier.weight(1f).aspectRatio(1f).heightIn(max = 50.dp).padding(2.dp)
+                                    Box(cellMod, contentAlignment = Alignment.Center) {
+                                        if (day != null) {
+                                            val isSel = day == selected
+                                            val isToday = day == today
+                                            val dayTasks = byDay[day].orEmpty()
+                                            val dayRems = remindersFor(day)
+                                            val hasAny = dayTasks.isNotEmpty() || dayRems.isNotEmpty()
+                                            val overdue = dayTasks.any { (card, s) -> !b.isDone(s.id) && (card.dueAt ?: 0) < System.currentTimeMillis() }
+                                            Column(
+                                                Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                                    .background(if (isSel) c.limeTile else if (hasAny) c.raised else Color.Transparent)
+                                                    .border(
+                                                        1.dp,
+                                                        if (isToday && !isSel) c.ink else if (hasAny && !isSel) c.border else Color.Transparent,
+                                                        RoundedCornerShape(12.dp),
+                                                    )
+                                                    .clickable { selected = day },
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center,
+                                            ) {
+                                                Text(
+                                                    "${day.dayOfMonth}",
+                                                    fontSize = 13.sp,
+                                                    color = if (isSel) c.onLime else c.ink,
+                                                    fontWeight = if (isToday || isSel) FontWeight.Bold else FontWeight.Normal,
+                                                )
+                                                if (hasAny) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
+                                                        if (dayRems.any { !it.done }) {
+                                                            Box(
+                                                                Modifier.size(5.dp).clip(CircleShape)
+                                                                    .background(if (isSel) c.onLime else reminderDotColor),
+                                                            )
+                                                        }
+                                                        dayTasks.take(if (dayRems.any { !it.done }) 2 else 3).forEach { (card, _) ->
+                                                            Box(
+                                                                Modifier.size(5.dp).clip(CircleShape)
+                                                                    .background(if (overdue) c.high else c.priorityFg(card.priority)),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -273,15 +303,39 @@ fun CalendarSheet(
                 modifier = Modifier.padding(bottom = 4.dp),
             )
             dayReminders.forEach { rem ->
-                DayReminder(
-                    rem = rem,
-                    onToggleDone = { vm.toggleCalendarReminderDone(rem.id) },
-                    onEdit = { loadForEdit(rem) },
-                    onDelete = {
-                        if (editingReminder?.id == rem.id) clearForm()
-                        vm.deleteCalendarReminder(rem.id)
-                    },
-                )
+                key(rem.id) {
+                    SwipeActionCard(
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        rightAction = SwipeActionSpec(
+                            label = if (rem.done) "Reopen" else "Done",
+                            icon = if (rem.done) Icons.Rounded.RadioButtonUnchecked else Icons.Rounded.CheckCircle,
+                            containerColor = if (rem.done) c.accent else c.low,
+                            contentColor = Color.White,
+                            onTrigger = { vm.toggleCalendarReminderDone(rem.id) },
+                        ),
+                        leftAction = SwipeActionSpec(
+                            label = "Delete",
+                            icon = Icons.Rounded.DeleteOutline,
+                            containerColor = c.danger,
+                            contentColor = Color.White,
+                            onTrigger = {
+                                if (editingReminder?.id == rem.id) clearForm()
+                                vm.deleteCalendarReminder(rem.id)
+                            },
+                        ),
+                    ) {
+                        DayReminder(
+                            rem = rem,
+                            onToggleDone = { vm.toggleCalendarReminderDone(rem.id) },
+                            onEdit = { loadForEdit(rem) },
+                            onDelete = {
+                                if (editingReminder?.id == rem.id) clearForm()
+                                vm.deleteCalendarReminder(rem.id)
+                            },
+                        )
+                    }
+                }
             }
         }
 
@@ -471,7 +525,7 @@ private fun DayReminder(
     ).joinToString(" · ")
 
     Row(
-        Modifier.padding(bottom = 6.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(if (rem.done) c.surface else c.accentSoft.copy(alpha = if (c.isDark) 0.45f else 0.5f))
             .border(1.dp, if (rem.done) c.border else c.voiceTertiary.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
             .clickable(onClick = onEdit)

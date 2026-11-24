@@ -15,6 +15,8 @@ import com.voicekanban.app.music.MusicDownloadManager
 import com.voicekanban.app.music.WorkoutMusicEngine
 import com.voicekanban.app.support.SupportTicketManager
 import com.voicekanban.app.sync.DesktopSyncManager
+import com.voicekanban.app.ui.components.rubberBandOffset
+import com.voicekanban.app.ui.components.shouldTriggerSwipe
 import com.voicekanban.app.ui.screens.ChangelogBlock
 import com.voicekanban.app.ui.screens.parseChangelogMarkdown
 import com.voicekanban.app.update.AppUpdater
@@ -271,6 +273,26 @@ class NewFeaturesTest {
         assertTrue(blocks.any { it is ChangelogBlock.Numbered && it.index == "1" })
         // Must NEVER emit raw table separator pipes or raw HTML tags as paragraphs
         assertFalse(blocks.any { it is ChangelogBlock.Paragraph && (it.text.contains(":---:") || it.text.contains("<img")) })
+    }
+
+    @Test
+    fun swipeMotionPhysicsRespectsDistanceVelocityAndRubberBand() {
+        // Inside maxTravel -> 1:1 tracking
+        assertEquals(60f, rubberBandOffset(60f, 120f), 0.001f)
+        assertEquals(-60f, rubberBandOffset(-60f, 120f), 0.001f)
+        // Beyond maxTravel -> damped rubber-band (never hard stop, never linear explosion)
+        val stretched = rubberBandOffset(220f, 120f)
+        assertTrue("Expected rubber-banded value between 120 and 160, got $stretched", stretched > 120f && stretched < 160f)
+
+        // Distance threshold triggers even at zero velocity
+        assertTrue(shouldTriggerSwipe(offsetPx = 90f, velocityPxPerSec = 0f, thresholdPx = 82f, flingVelocityPx = 860f))
+        assertTrue(shouldTriggerSwipe(offsetPx = -90f, velocityPxPerSec = 0f, thresholdPx = 82f, flingVelocityPx = 860f))
+        // Fast flick triggers over shorter distance in the same direction
+        assertTrue(shouldTriggerSwipe(offsetPx = 40f, velocityPxPerSec = 1100f, thresholdPx = 82f, flingVelocityPx = 860f))
+        // Flick in opposite direction (user changed mind and pulled back) must NOT trigger
+        assertFalse(shouldTriggerSwipe(offsetPx = 40f, velocityPxPerSec = -1100f, thresholdPx = 82f, flingVelocityPx = 860f))
+        // Short slow drag must NOT trigger
+        assertFalse(shouldTriggerSwipe(offsetPx = 30f, velocityPxPerSec = 120f, thresholdPx = 82f, flingVelocityPx = 860f))
     }
 
     @Test

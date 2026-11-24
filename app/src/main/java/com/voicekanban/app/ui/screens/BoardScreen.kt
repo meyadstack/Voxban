@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -103,6 +104,10 @@ import com.voicekanban.app.ui.ToastKind
 import com.voicekanban.app.ui.components.Chip
 import com.voicekanban.app.ui.components.DueChip
 import com.voicekanban.app.ui.components.PriorityPill
+import com.voicekanban.app.ui.components.SwipeActionCard
+import com.voicekanban.app.ui.components.SwipeActionSpec
+import com.voicekanban.app.ui.components.SwipeToDismissToast
+import com.voicekanban.app.ui.components.pagerSwipeTransition
 import com.voicekanban.app.ui.theme.VK
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -180,7 +185,13 @@ fun BoardScreen(
     }
 
     val pager = rememberPagerState { board.stages.size }
+    val pillListState = rememberLazyListState()
     LaunchedEffect(board.id) { pager.scrollToPage(0) }
+    LaunchedEffect(pager.currentPage) {
+        if (board.stages.isNotEmpty()) {
+            pillListState.animateScrollToItem((pager.currentPage + 1).coerceAtMost(board.stages.size))
+        }
+    }
     LaunchedEffect(focusStage) {
         focusStage?.let { id -> board.stages.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { pager.animateScrollToPage(it) } }
         vm.clearFocusStage()
@@ -227,7 +238,8 @@ fun BoardScreen(
 
                     // Stage / View Pills row
                     LazyRow(
-                        Modifier.padding(top = if (r.isCompactHeight) 8.dp else 14.dp),
+                        state = pillListState,
+                        modifier = Modifier.padding(top = if (r.isCompactHeight) 8.dp else 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -406,15 +418,18 @@ fun BoardScreen(
                     val colW = (maxWidth / 2 - 24.dp).coerceIn(280.dp, 360.dp)
                     Row(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).padding(horizontal = r.gutter, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         board.stages.forEachIndexed { i, s ->
-                            StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, Modifier.width(colW).fillMaxHeight(),
+                            StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, isWideLayout = true, Modifier.width(colW).fillMaxHeight(),
                                 onEdit = { editing = it }, onActions = { actionsFor = it }, onStageOptions = { stageFocus = s.id; stagesOpen = true })
                         }
                     }
                 } else {
                     HorizontalPager(pager, Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = r.headerGutter), pageSpacing = 12.dp) { i ->
                         val s = board.stages[i]
-                        StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, Modifier.fillMaxSize().padding(top = 4.dp, bottom = 8.dp),
-                            onEdit = { editing = it }, onActions = { actionsFor = it }, onStageOptions = { stageFocus = s.id; stagesOpen = true })
+                        StageColumn(
+                            vm, board, s, i, visible(s.cards), filtering, highlight, isWideLayout = false,
+                            Modifier.fillMaxSize().padding(top = 4.dp, bottom = 8.dp).pagerSwipeTransition(pager, i, tilt = true),
+                            onEdit = { editing = it }, onActions = { actionsFor = it }, onStageOptions = { stageFocus = s.id; stagesOpen = true },
+                        )
                     }
                 }
             }
@@ -532,6 +547,7 @@ fun InputField(value: String, onValue: (String) -> Unit, placeholder: String, mo
 @Composable
 private fun StageColumn(
     vm: MainViewModel, board: Board, stage: Stage, index: Int, cards: List<Card>, filtering: Boolean, highlight: Set<String>,
+    isWideLayout: Boolean,
     modifier: Modifier, onEdit: (Card) -> Unit, onActions: (Card) -> Unit, onStageOptions: () -> Unit,
 ) {
     val c = VK.colors
@@ -629,24 +645,55 @@ private fun StageColumn(
                 }
             }
             itemsIndexed(cards, key = { _, it -> it.id }) { cardIdx, card ->
-                TaskCard(
-                    card = card,
-                    cardIdx = cardIdx,
-                    isDone = isDone,
-                    highlighted = card.id in highlight,
-                    canLeft = index > 0,
-                    canRight = index < board.stages.lastIndex,
-                    onClick = { onEdit(card) },
-                    onLongPress = { onActions(card) },
-                    onPriority = { vm.cyclePriority(card.id) },
-                    onLeft = { vm.moveCardBy(card.id, -1) },
-                    onRight = { vm.moveCardBy(card.id, 1) },
+                val canLeft = index > 0
+                val canRight = index < board.stages.lastIndex
+                val nextStage = board.stages.getOrNull(index + 1)
+                val prevStage = board.stages.getOrNull(index - 1)
+                val allowSwipeRight = canRight && nextStage != null
+                // On portrait phones inside HorizontalPager, only enable left-swipe on Done cards
+                // so swiping right-to-left on active stages seamlessly glides the stage pager!
+                val allowSwipeLeft = canLeft && prevStage != null && (isWideLayout || isDone)
+                SwipeActionCard(
                     modifier = Modifier.animateItem(
                         fadeInSpec = tween(220),
                         fadeOutSpec = tween(180),
                         placementSpec = spring(dampingRatio = 0.78f, stiffness = 320f),
                     ),
-                )
+                    shape = RoundedCornerShape(24.dp),
+                    rightAction = if (allowSwipeRight) {
+                        val completing = board.isDone(nextStage!!.id)
+                        SwipeActionSpec(
+                            label = if (completing) "Done" else nextStage.title,
+                            icon = if (completing) Icons.Rounded.CheckCircle else Icons.AutoMirrored.Rounded.ArrowForward,
+                            containerColor = if (completing) c.low else c.limeTile,
+                            contentColor = if (completing) Color.White else c.onLime,
+                            onTrigger = { vm.moveCardBy(card.id, 1) },
+                        )
+                    } else null,
+                    leftAction = if (allowSwipeLeft) {
+                        SwipeActionSpec(
+                            label = prevStage!!.title,
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                            containerColor = c.accent,
+                            contentColor = Color.White,
+                            onTrigger = { vm.moveCardBy(card.id, -1) },
+                        )
+                    } else null,
+                ) {
+                    TaskCard(
+                        card = card,
+                        cardIdx = cardIdx,
+                        isDone = isDone,
+                        highlighted = card.id in highlight,
+                        canLeft = canLeft,
+                        canRight = canRight,
+                        onClick = { onEdit(card) },
+                        onLongPress = { onActions(card) },
+                        onPriority = { vm.cyclePriority(card.id) },
+                        onLeft = { vm.moveCardBy(card.id, -1) },
+                        onRight = { vm.moveCardBy(card.id, 1) },
+                    )
+                }
             }
         }
     }
@@ -845,22 +892,24 @@ fun ToastHost(vm: MainViewModel, modifier: Modifier = Modifier) {
     val c = VK.colors
     AnimatedVisibility(toast != null, modifier.padding(horizontal = 18.dp), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
         val t: Toast = toast ?: return@AnimatedVisibility
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.snackbar).padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                when (t.kind) { ToastKind.SUCCESS -> Icons.Rounded.CheckCircle; ToastKind.ERROR -> Icons.Rounded.ErrorOutline; ToastKind.INFO -> Icons.Rounded.Info },
-                null, tint = when (t.kind) { ToastKind.SUCCESS -> c.limeTile; ToastKind.ERROR -> Color(0xFFFB7185); ToastKind.INFO -> c.snackbarAction },
-            )
-            Column(Modifier.weight(1f)) {
-                Text(t.title, color = c.onSnackbar, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                t.detail?.let { Text(it, color = c.onSnackbar.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 4) }
+        SwipeToDismissToast(key = t, onDismiss = { vm.dismissToast() }) {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.snackbar).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    when (t.kind) { ToastKind.SUCCESS -> Icons.Rounded.CheckCircle; ToastKind.ERROR -> Icons.Rounded.ErrorOutline; ToastKind.INFO -> Icons.Rounded.Info },
+                    null, tint = when (t.kind) { ToastKind.SUCCESS -> c.limeTile; ToastKind.ERROR -> Color(0xFFFB7185); ToastKind.INFO -> c.snackbarAction },
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, color = c.onSnackbar, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    t.detail?.let { Text(it, color = c.onSnackbar.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 4) }
+                }
+                if (t.undo != null) Row(Modifier.clip(CircleShape).clickable { vm.undo(t.undo) }.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Undo, null, tint = c.snackbarAction, modifier = Modifier.size(15.dp))
+                    Text(" Undo", color = c.snackbarAction, style = MaterialTheme.typography.labelLarge)
+                } else Icon(Icons.Rounded.Close, "Dismiss", tint = c.onSnackbar.copy(alpha = 0.6f), modifier = Modifier.size(18.dp).clickable { vm.dismissToast() })
             }
-            if (t.undo != null) Row(Modifier.clip(CircleShape).clickable { vm.undo(t.undo) }.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Undo, null, tint = c.snackbarAction, modifier = Modifier.size(15.dp))
-                Text(" Undo", color = c.snackbarAction, style = MaterialTheme.typography.labelLarge)
-            } else Icon(Icons.Rounded.Close, "Dismiss", tint = c.onSnackbar.copy(alpha = 0.6f), modifier = Modifier.size(18.dp).clickable { vm.dismissToast() })
         }
     }
 }

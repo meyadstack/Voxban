@@ -4,6 +4,13 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,6 +69,8 @@ import com.voicekanban.app.music.WorkoutMusicPlayer
 import com.voicekanban.app.reminders.Reminders
 import com.voicekanban.app.ui.MainViewModel
 import com.voicekanban.app.ui.components.Chip
+import com.voicekanban.app.ui.components.SwipeActionCard
+import com.voicekanban.app.ui.components.SwipeActionSpec
 import com.voicekanban.app.ui.theme.VK
 import kotlinx.coroutines.launch
 
@@ -798,46 +807,80 @@ fun MiniMusicBar(
     val player by WorkoutMusicPlayer.state.collectAsState()
     val track = player.currentTrack ?: return
 
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(c.raised)
-            .border(1.dp, c.buttonBorder, RoundedCornerShape(18.dp))
-            .clickable(onClick = onOpenWorkout)
-            .padding(start = 8.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    SwipeActionCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(18.dp),
+        threshold = 68.dp,
+        maxTravel = 108.dp,
+        rightAction = SwipeActionSpec(
+            label = "Previous",
+            icon = Icons.Rounded.SkipPrevious,
+            containerColor = c.limeTile,
+            contentColor = c.onLime,
+            onTrigger = { WorkoutMusicPlayer.previous(ctx) },
+        ),
+        leftAction = SwipeActionSpec(
+            label = "Next",
+            icon = Icons.Rounded.SkipNext,
+            containerColor = c.limeTile,
+            contentColor = c.onLime,
+            onTrigger = { WorkoutMusicPlayer.next(ctx) },
+        ),
     ) {
-        TrackArt(track.thumbnailUrl, 36.dp)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(track.title, color = c.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                track.artist.ifBlank { "Workout music" },
-                color = c.inkSecondary,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Box(
-            Modifier.size(36.dp).clip(CircleShape).background(c.limeTile)
-                .clickable { WorkoutMusicPlayer.togglePlayPause(ctx) },
-            contentAlignment = Alignment.Center,
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.raised)
+                .border(1.dp, c.buttonBorder, RoundedCornerShape(18.dp))
+                .clickable(onClick = onOpenWorkout)
+                .padding(start = 8.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (player.isLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = c.onLime)
-            else Icon(if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "Play or pause", tint = c.onLime, modifier = Modifier.size(20.dp))
-        }
-        Box(
-            Modifier.size(34.dp).clip(CircleShape).clickable { WorkoutMusicPlayer.next(ctx) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.SkipNext, "Next track", tint = c.ink, modifier = Modifier.size(20.dp))
-        }
-        Box(
-            Modifier.size(32.dp).clip(CircleShape).clickable { WorkoutMusicPlayer.stop(ctx) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.Close, "Stop music", tint = c.inkTertiary, modifier = Modifier.size(16.dp))
+            AnimatedContent(
+                targetState = track,
+                contentKey = { it.videoId },
+                transitionSpec = {
+                    (fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it / 4 })
+                        .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(180)) { -it / 4 })
+                },
+                modifier = Modifier.weight(1f),
+                label = "miniMusicTrackSlide",
+            ) { t ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TrackArt(t.thumbnailUrl, 36.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(t.title, color = c.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            t.artist.ifBlank { "Workout music" },
+                            color = c.inkSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(c.limeTile)
+                    .clickable { WorkoutMusicPlayer.togglePlayPause(ctx) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (player.isLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = c.onLime)
+                else Icon(if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "Play or pause", tint = c.onLime, modifier = Modifier.size(20.dp))
+            }
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).clickable { WorkoutMusicPlayer.next(ctx) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.SkipNext, "Next track", tint = c.ink, modifier = Modifier.size(20.dp))
+            }
+            Box(
+                Modifier.size(32.dp).clip(CircleShape).clickable { WorkoutMusicPlayer.stop(ctx) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Close, "Stop music", tint = c.inkTertiary, modifier = Modifier.size(16.dp))
+            }
         }
     }
 }

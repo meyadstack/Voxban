@@ -1,6 +1,13 @@
 package com.voicekanban.app.ui.screens
 
 import android.app.DatePickerDialog
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,6 +52,9 @@ import com.voicekanban.app.data.formatMoney
 import com.voicekanban.app.data.newId
 import com.voicekanban.app.ui.MainViewModel
 import com.voicekanban.app.ui.components.Chip
+import com.voicekanban.app.ui.components.SwipeActionCard
+import com.voicekanban.app.ui.components.SwipeActionSpec
+import com.voicekanban.app.ui.components.SwipeStepContainer
 import com.voicekanban.app.ui.theme.VK
 import java.time.Instant
 import java.time.LocalDate
@@ -87,22 +97,48 @@ fun MoneyScreen(vm: MainViewModel) {
 
         val r = VK.responsive
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = r.gutter, end = r.gutter, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Summary
+            // Swipeable monthly summary card (swipe left/right to glide across months)
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(if (r.isCompactWidth) 16.dp else 20.dp)) {
-                    Text("Balance this month", fontSize = 12.sp, color = c.onLime.copy(alpha = 0.7f), fontWeight = FontWeight.Medium)
-                    Text(
-                        (if (income - spent < 0) "−" else "") + formatMoney(kotlin.math.abs(income - spent), cur),
-                        fontSize = if (r.isCompactWidth) 30.sp else 38.sp,
-                        lineHeight = if (r.isCompactWidth) 36.sp else 44.sp,
-                        color = c.onLime,
-                        letterSpacing = (-1).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Stat(Modifier.weight(1f), "Income", formatMoney(income, cur), c.low)
-                        Stat(Modifier.weight(1f), "Spent", formatMoney(spent, cur), c.high)
+                SwipeStepContainer(
+                    modifier = Modifier.fillMaxWidth(),
+                    canSwipeLeft = month < YearMonth.now(),
+                    canSwipeRight = true,
+                    onSwipeLeft = { if (month < YearMonth.now()) month = month.plusMonths(1) },
+                    onSwipeRight = { month = month.minusMonths(1) },
+                ) {
+                    AnimatedContent(
+                        targetState = month,
+                        transitionSpec = {
+                            val dir = if (targetState.isAfter(initialState)) 1 else -1
+                            (fadeIn(tween(180)) + slideInHorizontally(tween(240)) { dir * it / 3 })
+                                .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -dir * it / 3 })
+                        },
+                        label = "moneyMonthSwipe",
+                    ) { m ->
+                        val mList = app.transactions.filter { YearMonth.from(it.at.date()) == m }
+                        val mInc = mList.filter { it.type == TxType.INCOME }.sumOf { it.amount }
+                        val mSpent = mList.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(if (r.isCompactWidth) 16.dp else 20.dp)) {
+                            Text(
+                                "Balance · ${m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${m.year}",
+                                fontSize = 12.sp,
+                                color = c.onLime.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                (if (mInc - mSpent < 0) "−" else "") + formatMoney(kotlin.math.abs(mInc - mSpent), cur),
+                                fontSize = if (r.isCompactWidth) 30.sp else 38.sp,
+                                lineHeight = if (r.isCompactWidth) 36.sp else 44.sp,
+                                color = c.onLime,
+                                letterSpacing = (-1).sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Stat(Modifier.weight(1f), "Income", formatMoney(mInc, cur), c.low)
+                                Stat(Modifier.weight(1f), "Spent", formatMoney(mSpent, cur), c.high)
+                            }
+                        }
                     }
                 }
             }
@@ -165,7 +201,21 @@ fun MoneyScreen(vm: MainViewModel) {
                         Text((if (net < 0) "−" else "+") + formatMoney(kotlin.math.abs(net), cur), fontSize = 12.sp, color = c.inkTertiary)
                     }
                 }
-                items(list, key = { it.id }) { t -> TxRow(t, cur) { editing = t } }
+                items(list, key = { it.id }) { t ->
+                    SwipeActionCard(
+                        modifier = Modifier.animateItem(),
+                        shape = RoundedCornerShape(20.dp),
+                        leftAction = SwipeActionSpec(
+                            label = "Delete",
+                            icon = Icons.Rounded.DeleteOutline,
+                            containerColor = c.danger,
+                            contentColor = Color.White,
+                            onTrigger = { vm.deleteTransaction(t.id) },
+                        ),
+                    ) {
+                        TxRow(t, cur) { editing = t }
+                    }
+                }
             }
         }
     }

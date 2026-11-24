@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,14 +81,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,9 +103,12 @@ import com.voicekanban.app.data.Engine
 import com.voicekanban.app.ui.MainViewModel
 import com.voicekanban.app.ui.Section
 import com.voicekanban.app.ui.components.LogoMark
+import com.voicekanban.app.ui.components.pagerSwipeTransition
 import com.voicekanban.app.ui.theme.VK
 import com.voicekanban.app.update.AppUpdater
 import com.voicekanban.app.update.UpdateState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -145,6 +154,36 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
     // A running focus session takes over the whole screen.
     app.activeFocus?.let { f -> FocusOverlay(vm, f); return }
 
+    val primaryIdx = PRIMARY_SECTIONS.indexOf(section)
+    val isPrimary = primaryIdx >= 0
+    val primaryPager = rememberPagerState(initialPage = primaryIdx.coerceAtLeast(0)) { PRIMARY_SECTIONS.size }
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+
+    // Sync programmatic tab taps -> pager with crisp spring swipe animation
+    LaunchedEffect(section) {
+        val idx = PRIMARY_SECTIONS.indexOf(section)
+        if (idx >= 0 && primaryPager.currentPage != idx) {
+            primaryPager.animateScrollToPage(idx, animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f))
+        }
+    }
+
+    // Sync user finger swipes on primary pager -> active section + subtle haptic tick
+    LaunchedEffect(primaryPager, isPrimary) {
+        if (!isPrimary) return@LaunchedEffect
+        snapshotFlow { primaryPager.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                val target = PRIMARY_SECTIONS[page]
+                if (vm.section.value != target && vm.section.value in PRIMARY_SECTIONS) {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    vm.setSection(target)
+                }
+            }
+    }
+
+    val displayedSection = if (isPrimary) PRIMARY_SECTIONS[primaryPager.targetPage] else section
+
     val mainContent: @Composable (Modifier) -> Unit = { mod ->
         Column(mod.imePadding()) {
             // In-app GitHub release update banner when a newer release is available / downloading / ready
@@ -164,38 +203,63 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
             }
             Box(Modifier.weight(1f)) {
                 AnimatedContent(
-                    section,
+                    targetState = if (isPrimary) null else section,
                     transitionSpec = {
-                        val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                        (fadeIn(tween(240)) + slideInHorizontally(tween(260)) { dir * it / 8 })
-                            .togetherWith(fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { -dir * it / 8 })
+                        val goingToMore = targetState != null
+                        val dir = if (goingToMore) 1 else -1
+                        (fadeIn(tween(220)) + slideInHorizontally(spring(dampingRatio = 0.86f, stiffness = 420f)) { dir * it / 5 })
+                            .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(200)) { -dir * it / 6 })
                     },
-                    label = "section",
-                ) { s ->
-                    when (s) {
-                        Section.HOME -> DashboardScreen(vm, onSettings = { settingsOpen = true })
-                        Section.BOARD -> BoardScreen(
-                            vm,
-                            onOpenUpdateSheet = { updateSheetOpen = true },
-                            onOpenSupport = { supportOpen = true },
-                            onOpenPairDesktop = { pairOpen = true },
-                        )
-                        Section.ASSISTANT -> AssistantScreen(vm)
-                        Section.WORKOUT -> WorkoutScreen(vm)
-                        Section.NOTES -> NotesScreen(vm)
-                        Section.MONEY -> MoneyScreen(vm)
-                        Section.VAULT -> VaultScreen(vm)
-                        Section.FOCUS -> FocusScreen(vm)
+                    label = "rootSectionLayer",
+                ) { moreSection ->
+                    if (moreSection == null) {
+                        // 1:1 finger-tracked swipe navigation across Home ↔ Tasks ↔ Voice AI ↔ Workout
+                        HorizontalPager(
+                            state = primaryPager,
+                            modifier = Modifier.fillMaxSize(),
+                            beyondViewportPageCount = 1,
+                        ) { page ->
+                            Box(Modifier.fillMaxSize().pagerSwipeTransition(primaryPager, page, tilt = false)) {
+                                when (PRIMARY_SECTIONS[page]) {
+                                    Section.HOME -> DashboardScreen(vm, onSettings = { settingsOpen = true })
+                                    Section.BOARD -> BoardScreen(
+                                        vm,
+                                        onOpenUpdateSheet = { updateSheetOpen = true },
+                                        onOpenSupport = { supportOpen = true },
+                                        onOpenPairDesktop = { pairOpen = true },
+                                    )
+                                    Section.ASSISTANT -> AssistantScreen(vm)
+                                    Section.WORKOUT -> WorkoutScreen(vm)
+                                    else -> Unit
+                                }
+                            }
+                        }
+                    } else {
+                        when (moreSection) {
+                            Section.NOTES -> NotesScreen(vm)
+                            Section.MONEY -> MoneyScreen(vm)
+                            Section.VAULT -> VaultScreen(vm)
+                            Section.FOCUS -> FocusScreen(vm)
+                            else -> Unit
+                        }
                     }
                 }
             }
             // Slim workout music mini-player when listening while browsing other tabs
-            if (section != Section.WORKOUT && !WindowInsets.isImeVisible) {
+            if (displayedSection != Section.WORKOUT && !WindowInsets.isImeVisible) {
                 MiniMusicBar(onOpenWorkout = { vm.setSection(Section.WORKOUT) })
             }
             // Bottom tab bar on portrait phones (steps aside while typing)
             if (!r.useRailNav && !WindowInsets.isImeVisible) {
-                TabBar(section, onMore = { moreOpen = true }) { vm.setSection(it) }
+                TabBar(displayedSection, onMore = { moreOpen = true }) { target ->
+                    vm.setSection(target)
+                    val idx = PRIMARY_SECTIONS.indexOf(target)
+                    if (idx >= 0) {
+                        scope.launch {
+                            primaryPager.animateScrollToPage(idx, animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f))
+                        }
+                    }
+                }
             }
         }
     }
@@ -234,6 +298,13 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
     if (supportOpen) SupportSheet(vm, onDismiss = { supportOpen = false })
     if (pairOpen) DesktopPairSheet(vm, onDismiss = { pairOpen = false })
 }
+
+private val PRIMARY_SECTIONS = listOf(
+    Section.HOME,
+    Section.BOARD,
+    Section.ASSISTANT,
+    Section.WORKOUT,
+)
 
 private val MORE_SECTIONS = listOf(
     Triple(Section.NOTES, "Notes", Icons.AutoMirrored.Rounded.StickyNote2),
