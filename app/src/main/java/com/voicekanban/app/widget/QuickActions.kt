@@ -28,7 +28,7 @@ object QuickActions {
         if (!Reminders.canPost(context)) return
         val board = ws.activeBoard
         val next = Assistant.nextUp(board)
-        val body = next?.let { (c, _) -> "Next: ${c.text}" + (c.dueAt?.let { " · ${DateParser.relative(it)}" } ?: "") } ?: "All clear — tap Talk to plan what’s next"
+        val body = next?.let { (c, _) -> "Next: ${c.text}" + (c.dueAt?.let { " · ${DateParser.relative(it)}" } ?: "") } ?: "All clear - tap Talk to plan what’s next"
         val n = NotificationCompat.Builder(context, VoiceKanbanApp.CHANNEL_QUICK)
             .setSmallIcon(R.drawable.ic_stat_voicekanban)
             .setContentTitle("${board.title} · ${board.doneCount}/${board.totalCards} done")

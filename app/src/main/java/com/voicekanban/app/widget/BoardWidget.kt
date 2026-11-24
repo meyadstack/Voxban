@@ -96,7 +96,7 @@ private fun WidgetContent(context: Context, ws: Workspace) {
         Text("UP NEXT", style = TextStyle(color = sub, fontSize = 10.sp, fontWeight = FontWeight.Bold))
         Spacer(GlanceModifier.height(4.dp))
         Column(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
-            if (next.isEmpty()) Text("All clear — say “Add …” to plan more.", style = TextStyle(color = sub, fontSize = 12.sp))
+            if (next.isEmpty()) Text("All clear - say “Add …” to plan more.", style = TextStyle(color = sub, fontSize = 12.sp))
             next.forEach { (card, _) ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.padding(vertical = 2.dp)) {
                     val dot = when (card.priority) { Priority.HIGH -> Color(0xFFEF4444); Priority.MEDIUM -> Color(0xFFF59E0B); Priority.LOW -> Color(0xFF10B981) }
@@ -107,7 +107,7 @@ private fun WidgetContent(context: Context, ws: Workspace) {
             }
         }
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            // Primary: voice AI — opens the orb already listening.
+            // Primary: voice AI - opens the orb already listening.
             Row(
                 modifier = GlanceModifier.defaultWeight().height(44.dp).background(LIME).cornerRadius(22.dp)
                     .clickable(open(context, "voicekanban://assistant?listen=1")),

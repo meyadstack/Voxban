@@ -719,7 +719,7 @@ fun parseChangelogMarkdown(markdown: String): List<ChangelogBlock> {
             if (foundImg || cells.isEmpty()) continue
             // If it's a real data table row (e.g. downloads), convert cleanly to a readable bullet
             flushImages()
-            out.add(ChangelogBlock.Bullet(cells.joinToString(" — ")))
+            out.add(ChangelogBlock.Bullet(cells.joinToString(" - ")))
             continue
         }
 

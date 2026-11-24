@@ -546,7 +546,7 @@ fn rank_audio_formats(root: &Value, ua: &str) -> Vec<ResolvedStream> {
             .and_then(|s| s.parse::<u64>().ok())
             .or_else(|| f.get("contentLength").and_then(|v| v.as_u64()));
 
-        // Strongly prefer audio/mp4 (AAC M4A) — universally playable in macOS WKWebView, Windows WebView2, Safari & Chrome!
+        // Strongly prefer audio/mp4 (AAC M4A) - universally playable in macOS WKWebView, Windows WebView2, Safari & Chrome!
         let bonus = if mime.starts_with("audio/mp4") { 500_000 } else { 0 };
         ranked.push((
             bitrate + bonus,

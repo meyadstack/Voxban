@@ -207,7 +207,7 @@ export function NotesView({ state, onSaveState }: Props) {
                   <textarea
                     value={active.body}
                     onChange={(e) => updateNote(active.id, { body: e.target.value })}
-                    placeholder="Write freely — # heading, - bullet, - [ ] to-do. Press Enter for a new line."
+                    placeholder="Write freely - # heading, - bullet, - [ ] to-do. Press Enter for a new line."
                     className="w-full flex-1 min-h-[340px] bg-transparent border-0 outline-none text-sm leading-relaxed resize-y text-[#1B201C]"
                   />
                 </div>

@@ -387,7 +387,7 @@ fun CalendarSheet(
                             color = c.ink,
                         )
                         Text(
-                            "Shown in Calendar only — won’t appear on your Kanban board.",
+                            "Shown in Calendar only - won’t appear on your Kanban board.",
                             fontSize = 11.sp,
                             color = c.inkSecondary,
                         )

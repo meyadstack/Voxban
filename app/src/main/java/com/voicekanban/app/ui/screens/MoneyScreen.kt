@@ -333,7 +333,7 @@ private fun TxEditor(vm: MainViewModel, t: Transaction, onDismiss: () -> Unit) {
 private fun BudgetSheet(vm: MainViewModel, category: String, current: Double?, onDismiss: () -> Unit) {
     val c = VK.colors
     var limit by remember { mutableStateOf(current?.toString()?.removeSuffix(".0") ?: "") }
-    AppSheet("$category budget", "Monthly limit — the bar turns red when you go over", onDismiss = onDismiss) {
+    AppSheet("$category budget", "Monthly limit - the bar turns red when you go over", onDismiss = onDismiss) {
         TextField(
             limit, { v -> limit = v.filter { it.isDigit() || it == '.' } }, Modifier.padding(top = 8.dp).fillMaxWidth(),
             prefix = { Text(vm.currency, fontSize = 24.sp, color = c.inkSecondary) }, placeholder = { Text("No budget", color = c.inkTertiary) },

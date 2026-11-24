@@ -443,7 +443,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _undoable.value = _undoable.value - messageId
         val fromVoice = state.value.voiceChat.any { it.id == messageId }
         mapMessages { list -> list.map { if (it.id == messageId) it.copy(changes = it.changes.map { c -> "↩︎ $c" }) else it } }
-        appendMessage(fromVoice, ChatMessage(newId("m"), false, "Undone — everything is back the way it was.", fromVoice = fromVoice))
+        appendMessage(fromVoice, ChatMessage(newId("m"), false, "Undone - everything is back the way it was.", fromVoice = fromVoice))
     }
 
     // ------------------------------------------------------------ chat sessions
@@ -583,7 +583,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         commit(if (dueAt == null) "Removed the date from “$name”" else "“$name” · due ${DateParser.label(dueAt)}", transform = mapBoard { b -> b.mapCard(cardId) { it.copy(dueAt = dueAt, remindBeforeMin = remindBeforeMin) } })
     }
 
-    /** Adds a standalone calendar reminder — shown in the Calendar ONLY, never on the Kanban board. */
+    /** Adds a standalone calendar reminder - shown in the Calendar ONLY, never on the Kanban board. */
     fun addCalendarReminder(
         title: String,
         at: Long,
@@ -725,7 +725,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * The ElevenLabs voice for the current language. For a language without one yet, picks the
      * most-used native speaker from the ElevenLabs Voice Library, adds it to the account and
-     * remembers it — so Bangla is spoken by a Bangla voice, not an English one.
+     * remembers it - so Bangla is spoken by a Bangla voice, not an English one.
      */
     suspend fun voiceForSpeech(lang: AppLanguage = state.value.settings.appLanguage): VoiceChoice? {
         state.value.settings.voiceFor(lang)?.let { return it }

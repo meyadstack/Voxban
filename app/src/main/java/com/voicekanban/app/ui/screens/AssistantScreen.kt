@@ -154,7 +154,7 @@ fun AssistantScreen(vm: MainViewModel) {
         }
     }
 
-    // Opened with "listen" (from the board's mic): start listening straight away — no canned greeting.
+    // Opened with "listen" (from the board's mic): start listening straight away - no canned greeting.
     LaunchedEffect(autoListen) {
         if (autoListen) {
             vm.consumeAutoListen()
@@ -321,8 +321,8 @@ private fun VoicePane(
             )
             Text(
                 when (mood) {
-                    AvatarMood.IDLE -> "Ask anything, or tell me to add, change or delete tasks, notes and logins. Drag across me — I’ll watch your finger."
-                    AvatarMood.LISTENING -> "Go ahead — tap me when you’re done."
+                    AvatarMood.IDLE -> "Ask anything, or tell me to add, change or delete tasks, notes and logins. Drag across me - I’ll watch your finger."
+                    AvatarMood.LISTENING -> "Go ahead - tap me when you’re done."
                     AvatarMood.THINKING -> if (loadingModel) "First reply on this phone takes a few seconds." else "Working on it…"
                     AvatarMood.SPEAKING -> "Tap me to interrupt and speak."
                 },

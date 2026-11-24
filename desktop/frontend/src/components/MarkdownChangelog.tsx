@@ -62,7 +62,7 @@ function parseChangelog(markdown: string): Block[] {
         .filter(Boolean);
       if (foundImg || cells.length === 0) continue;
       flushImgs();
-      blocks.push({ kind: "bullet", text: cells.join(" — ") });
+      blocks.push({ kind: "bullet", text: cells.join(" - ") });
       continue;
     }
 

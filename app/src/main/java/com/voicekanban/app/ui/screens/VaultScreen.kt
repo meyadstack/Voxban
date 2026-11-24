@@ -203,7 +203,7 @@ private fun EntrySheet(vm: MainViewModel, e: PasswordEntry, onDismiss: () -> Uni
             EntryTile(e, 56); Spacer(Modifier.width(14.dp))
             Text(strength(e.password).first, color = strength(e.password).second(), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
-        Field(Icons.Rounded.Person, "Username", e.username.ifBlank { "—" }, onCopy = e.username.takeIf { it.isNotBlank() }?.let { { copySecret(ctx, "Username", it, sensitive = false); vm.showToast(ToastKind.SUCCESS, "Username copied") } })
+        Field(Icons.Rounded.Person, "Username", e.username.ifBlank { "-" }, onCopy = e.username.takeIf { it.isNotBlank() }?.let { { copySecret(ctx, "Username", it, sensitive = false); vm.showToast(ToastKind.SUCCESS, "Username copied") } })
         Field(
             Icons.Rounded.Key, "Password", if (reveal) e.password else "•".repeat(e.password.length.coerceIn(8, 16)), mono = true,
             trailing = { Icon(if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (reveal) "Hide" else "Show", tint = c.inkSecondary, modifier = Modifier.size(40.dp).clip(CircleShape).clickable { reveal = !reveal }.padding(10.dp)) },

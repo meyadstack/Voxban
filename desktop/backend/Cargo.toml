@@ -2,7 +2,7 @@
 name = "voxban-backend"
 version = "3.5.1"
 edition = "2021"
-description = "Rust backend for Voxban Desktop — Kanban, Calendar Reminders, Voice AI, Notes, Money, Biometric Vault, Workouts, Music Player & Downloader, Support Tickets, and Phone QR LAN Sync"
+description = "Rust backend for Voxban Desktop - Kanban, Calendar Reminders, Voice AI, Notes, Money, Biometric Vault, Workouts, Music Player & Downloader, Support Tickets, and Phone QR LAN Sync"
 
 [lib]
 name = "voxban_backend"

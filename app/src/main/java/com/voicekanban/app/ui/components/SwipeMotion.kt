@@ -225,13 +225,13 @@ fun SwipeActionCard(
                             accX += delta.x
                             accY += delta.y
                             if (abs(accY) > touchSlop && abs(accY) >= abs(accX)) {
-                                // Vertical scroll wins cleanly — do not consume.
+                                // Vertical scroll wins cleanly - do not consume.
                                 break
                             }
                             if (abs(accX) > touchSlop && abs(accX) > abs(accY)) {
                                 val allowDir = (accX > 0f && currentRight != null) || (accX < 0f && currentLeft != null)
                                 if (!allowDir) {
-                                    // Disabled swipe direction — hand straight through to parent HorizontalPager!
+                                    // Disabled swipe direction - hand straight through to parent HorizontalPager!
                                     break
                                 }
                                 dragging = true
@@ -261,7 +261,7 @@ fun SwipeActionCard(
                 }
             },
     ) {
-        // Revealed action backdrop — drawn only while displacing (zero overdraw at rest)
+        // Revealed action backdrop - drawn only while displacing (zero overdraw at rest)
         if (activeSpec != null && abs(curOffset) > 1f) {
             val isRight = curOffset > 0f
             val bgAlpha = if (pastThreshold) 1f else (0.28f + 0.62f * progress.coerceAtMost(1f))

@@ -103,11 +103,11 @@ object Assistant {
             "• “What should I work on next?” or “Give me a summary”",
         ).joinToString("\n")
         if (Regex("""(list|show|what are|which).*(boards)|how many boards|my boards""").containsMatchIn(q))
-            return "You have ${plural(ws.boards.size, "board")}:\n" + listify(ws.boards.map { "${it.title}${if (it.id == ws.activeBoardId) " (open)" else ""} — ${plural(it.totalCards, "card")}" }, 10)
+            return "You have ${plural(ws.boards.size, "board")}:\n" + listify(ws.boards.map { "${it.title}${if (it.id == ws.activeBoardId) " (open)" else ""} - ${plural(it.totalCards, "card")}" }, 10)
         if (Regex("""summary|summari[sz]e|status|overview|how (am i|are we) doing|progress report""").containsMatchIn(q)) return summary(board)
         if (Regex("""overdue|late|missed|past due""").containsMatchIn(q)) {
             val items = openCards(board).filter { it.first.dueAt?.let { d -> d < now } == true }
-            return if (items.isEmpty()) "Nothing is overdue on “${board.title}”. 🎉" else "Overdue:\n" + listify(items.map { "${it.first.text} — ${DateParser.relative(it.first.dueAt!!)}" }, 8)
+            return if (items.isEmpty()) "Nothing is overdue on “${board.title}”. 🎉" else "Overdue:\n" + listify(items.map { "${it.first.text} - ${DateParser.relative(it.first.dueAt!!)}" }, 8)
         }
         Regex("""(due|deadlines?)\s*(today|tomorrow|this week|next week|soon)?""").find(q)?.takeIf { q.contains("due") || q.contains("deadline") }?.let { m ->
             val today = LocalDate.now()
@@ -120,12 +120,12 @@ object Assistant {
             val items = openCards(board).filter { it.first.dueAt?.let { d -> localDate(d) in range || d < now } == true }
                 .sortedBy { it.first.dueAt }
             val label = m.groupValues[2].ifEmpty { "this week" }
-            return if (items.isEmpty()) "Nothing due $label on “${board.title}”." else "Due $label:\n" + listify(items.map { "${it.first.text} — ${DateParser.label(it.first.dueAt!!)}" }, 8)
+            return if (items.isEmpty()) "Nothing due $label on “${board.title}”." else "Due $label:\n" + listify(items.map { "${it.first.text} - ${DateParser.label(it.first.dueAt!!)}" }, 8)
         }
         if (Regex("""what should i (do|work on)|what('?s| is) next|next task|where (do|should) i start|focus on""").containsMatchIn(q)) {
             val n = nextUp(board) ?: return "Nothing open on “${board.title}”. Add something with “Add …”."
             val due = n.first.dueAt?.let { " It’s due ${DateParser.label(it)} (${DateParser.relative(it)})." } ?: ""
-            return "I’d do “${n.first.text}” next — it’s ${n.first.priority.label.lowercase()} priority in ${n.second}.$due"
+            return "I’d do “${n.first.text}” next - it’s ${n.first.priority.label.lowercase()} priority in ${n.second}.$due"
         }
         if (Regex("""(high|urgent|important|critical) (priority|tasks|cards|items)|what('?s| is) (urgent|important)""").containsMatchIn(q)) {
             val items = openCards(board).filter { it.first.priority == Priority.HIGH }
@@ -136,7 +136,7 @@ object Assistant {
         Regex("""(?:what(?:'s| is| are)?|show|list)(?: me)?(?: the)? (?:tasks |cards |items )?(?:in|under|on)? ?(.+?)(?: column| stage| list)?$""").find(q)?.let { m ->
             val id = CommandParser.resolveStage(m.groupValues[1], board)
             board.stages.firstOrNull { it.id == id }?.let { s ->
-                return if (s.cards.isEmpty()) "${s.title} is empty." else "${s.title} (${s.cards.size}):\n" + listify(s.cards.map { it.text + if (it.priority == Priority.HIGH) " — high" else "" }, 8)
+                return if (s.cards.isEmpty()) "${s.title} is empty." else "${s.title} (${s.cards.size}):\n" + listify(s.cards.map { it.text + if (it.priority == Priority.HIGH) " - high" else "" }, 8)
             }
         }
         return null
@@ -229,14 +229,14 @@ object Assistant {
 
     fun systemPrompt(world: World, settings: Settings = Settings(), compact: Boolean = false): String {
         val ws = world.workspace
-        val who = settings.userName.trim().let { if (it.isNotEmpty()) " The user's name is \"$it\" — address them naturally by name when appropriate." else "" }
+        val who = settings.userName.trim().let { if (it.isNotEmpty()) " The user's name is \"$it\" - address them naturally by name when appropriate." else "" }
         val lang = settings.appLanguage.let { " Always write \"reply\" in ${it.label} (${it.nativeName}, locale ${it.code}); keep card, note and login names as the user said them." }
         val colors = NOTE_COLORS.joinToString("|") { it.first.lowercase() }
         return """
-You are Voxban's assistant: a warm, witty, concise voice assistant inside an app with Kanban boards, notes, a money manager and a password vault. The user talks to you like a friend.$who$lang You remember the whole conversation below — use it to resolve "it", "that one", "the same", etc. You can also chat freely — jokes, advice, planning, general questions — answer those in "reply" with no actions.
+You are Voxban's assistant: a warm, witty, concise voice assistant inside an app with Kanban boards, notes, a money manager and a password vault. The user talks to you like a friend.$who$lang You remember the whole conversation below - use it to resolve "it", "that one", "the same", etc. You can also chat freely - jokes, advice, planning, general questions - answer those in "reply" with no actions.
 
 Reply with ONLY a JSON object: {"reply": "...", "actions": [...]}. "reply" is what you say back: 1-4 short sentences, plain text, may use • bullets.
-The app changes NOTHING unless you put an action in "actions". Whenever the user asks to create, add, change, update, edit, move, rename, complete, delete or remove anything, you MUST include the matching action(s) — several if needed. Never claim a change you didn't include. Use "actions": [] for questions and chat.
+The app changes NOTHING unless you put an action in "actions". Whenever the user asks to create, add, change, update, edit, move, rename, complete, delete or remove anything, you MUST include the matching action(s) - several if needed. Never claim a change you didn't include. Use "actions": [] for questions and chat.
 Earlier assistant turns may contain "applied": the changes that already happened. Don't repeat them unless asked again.
 
 Board / card actions (cards are found on any board by their text):
@@ -253,12 +253,12 @@ Board / card actions (cards are found on any board by their text):
 {"action":"rename_stage","stage":"<stage>","title":"<new title>"}
 {"action":"delete_stage","stage":"<stage>"}
 
-Note actions — when asked to make a note from scattered words, write it yourself: a short title and a tidy, well-structured body using light markdown ("# " heading lines, "- " bullets, "- [ ] " to-dos, **bold**). Fix spelling, group related items, add nothing the user didn't imply:
+Note actions - when asked to make a note from scattered words, write it yourself: a short title and a tidy, well-structured body using light markdown ("# " heading lines, "- " bullets, "- [ ] " to-dos, **bold**). Fix spelling, group related items, add nothing the user didn't imply:
 {"action":"create_note","title":"...","body":"...","color":"$colors"}
 {"action":"update_note","note":"<existing note title>","title":"<new title>","body":"<full new body>","append":"<text to add at the end>","color":"...","pinned":true}
 {"action":"delete_note","note":"<existing note title>"}
 
-Password vault actions — you can see login names but never the passwords. Use "generate": true to create a strong password. To show one, use show_password (the app opens it privately; never read passwords aloud):
+Password vault actions - you can see login names but never the passwords. Use "generate": true to create a strong password. To show one, use show_password (the app opens it privately; never read passwords aloud):
 {"action":"add_password","title":"<site or app>","username":"...","password":"<only if the user said it>","url":"...","generate":true}
 {"action":"update_password","entry":"<existing login>","username":"...","password":"...","url":"...","notes":"...","generate":true}
 {"action":"delete_password","entry":"<existing login>"}
@@ -270,7 +270,7 @@ Money manager actions (amounts are plain numbers in the user's currency; "date" 
 {"action":"delete_transaction","transaction":"<id in [brackets] or description>"}
 {"action":"set_budget","category":"Food","limit":5000}  (limit 0 removes it)
 
-Calendar reminder actions (shown ONLY in the Calendar — NOT added to Kanban boards; use when the user asks for a reminder rather than a board task):
+Calendar reminder actions (shown ONLY in the Calendar - NOT added to Kanban boards; use when the user asks for a reminder rather than a board task):
 {"action":"add_reminder","title":"...","when":"<ISO date-time>","notes":"<optional>","repeat":"none|daily|weekly|monthly"}
 {"action":"delete_reminder","reminder":"<existing reminder title>"}
 
@@ -347,14 +347,14 @@ ${moneyContext(world)}
         offlineWorkspaceActions(input, ws)?.let { acts ->
             val out = apply(acts)
             val reply = when {
-                out.changes.firstOrNull()?.startsWith("Created board") == true -> "${out.changes.first()}. It’s open now — tell me what to add."
+                out.changes.firstOrNull()?.startsWith("Created board") == true -> "${out.changes.first()}. It’s open now - tell me what to add."
                 out.mutated -> out.changes.joinToString(". ") + "."
                 else -> out.failures.firstOrNull() ?: "I couldn’t do that."
             }
             return AssistantResult(reply, out, engine)
         }
         val out = apply(CommandParser.parse(input, ws.activeBoard))
-        if (out.mutated) return AssistantResult(if (out.changes.size == 1) "${out.changes.first()}." else "Done — ${plural(out.changes.size, "change")}.", out, engine)
+        if (out.mutated) return AssistantResult(if (out.changes.size == 1) "${out.changes.first()}." else "Done - ${plural(out.changes.size, "change")}.", out, engine)
         val fail = out.failures.firstOrNull()
         return AssistantResult(
             if (fail != null && !fail.startsWith("Not sure")) "$fail. Want me to try something else?"
@@ -382,7 +382,7 @@ ${moneyContext(world)}
         val system = """
 You turn scattered words, fragments and voice dictation into a beautiful, well-organised note. Write in ${lang.label} (${lang.nativeName}) unless the words are clearly in another language.
 Reply with ONLY JSON: {"title":"short title","body":"note body","color":"${NOTE_COLORS.joinToString("|") { it.first.lowercase() }}"}
-Body rules: light markdown only — "# " section headings, "- " bullets, "- [ ] " to-dos, **bold** for key words. Fix spelling and grammar, group related items under headings, turn intentions into to-dos, keep dates and numbers exact. Add nothing the user didn't imply. Pick a colour that suits the mood/topic.
+Body rules: light markdown only - "# " section headings, "- " bullets, "- [ ] " to-dos, **bold** for key words. Fix spelling and grammar, group related items under headings, turn intentions into to-dos, keep dates and numbers exact. Add nothing the user didn't imply. Pick a colour that suits the mood/topic.
 """.trimIndent()
         val prompt = if (existing != null) "Rewrite and improve this note, keeping all its facts.\nTitle: ${existing.title}\n${existing.body}\n\nAlso include: $raw" else raw
         val text: String? = runCatching {

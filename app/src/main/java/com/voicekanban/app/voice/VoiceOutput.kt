@@ -52,7 +52,7 @@ class VoiceOutput(context: Context) {
     private val _level = MutableStateFlow(0f)
     val level: StateFlow<Float> = _level.asStateFlow()
     private val _lastEngine = MutableStateFlow("")
-    /** "ElevenLabs · Jessica" or "Phone voice" — shown in settings. */
+    /** "ElevenLabs · Jessica" or "Phone voice" - shown in settings. */
     val lastEngine: StateFlow<String> = _lastEngine.asStateFlow()
 
     private var ttsReady = false
@@ -70,7 +70,7 @@ class VoiceOutput(context: Context) {
     /**
      * Speaks [text] in [languageTag] with the user's ElevenLabs [voiceId]. The ElevenLabs model is
      * chosen per language so Bangla and other languages are pronounced natively. Without a key the
-     * phone voice is used only if it actually has that language installed — never an English
+     * phone voice is used only if it actually has that language installed - never an English
      * voice reading another language.
      */
     fun speak(
@@ -85,7 +85,7 @@ class VoiceOutput(context: Context) {
         val locale = if (languageTag.isNotBlank()) Locale.forLanguageTag(languageTag) else Locale.getDefault()
         // No ElevenLabs key: the phone's own voice, and only if it speaks this language.
         if (key.isBlank()) { speakDevice(id, clean, locale); return }
-        if (voiceId.isBlank()) { fail(id, "No ${locale.displayLanguage} ElevenLabs voice chosen yet — pick one in Settings → Voice."); return }
+        if (voiceId.isBlank()) { fail(id, "No ${locale.displayLanguage} ElevenLabs voice chosen yet - pick one in Settings → Voice."); return }
         job = scope.launch {
             _lastEngine.value = "ElevenLabs · $voiceName"
             val result = runCatching { withContext(Dispatchers.IO) { synthesize(clean, voiceId, key, locale.language, model) } }
@@ -103,7 +103,7 @@ class VoiceOutput(context: Context) {
     }
 
     private val _lastError = MutableStateFlow<String?>(null)
-    /** Last ElevenLabs problem (e.g. paid-only voice, quota used up) — shown to the user. */
+    /** Last ElevenLabs problem (e.g. paid-only voice, quota used up) - shown to the user. */
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
     fun clearError() { _lastError.value = null }
 
@@ -278,9 +278,9 @@ class VoiceOutput(context: Context) {
             raw.contains("free_users_not_allowed", true) || raw.contains("not available for free", true) || (raw.contains("free", true) && raw.contains("library", true)) ->
                 "$voice needs a paid ElevenLabs plan. Pick a voice marked “Free” in Settings → Voice."
             raw.contains("quota_exceeded", true) || raw.contains("quota", true) -> "Your ElevenLabs character quota is used up for this month."
-            raw.contains("voice_not_found", true) || raw.contains("HTTP 404") -> "ElevenLabs can’t find $voice any more — choose another voice in Settings → Voice."
-            raw.contains("HTTP 401") -> "ElevenLabs rejected the API key — check it in Settings → Voice."
-            raw.contains("Unable to resolve host", true) || raw.contains("timeout", true) -> "Couldn’t reach ElevenLabs — check your internet connection."
+            raw.contains("voice_not_found", true) || raw.contains("HTTP 404") -> "ElevenLabs can’t find $voice any more - choose another voice in Settings → Voice."
+            raw.contains("HTTP 401") -> "ElevenLabs rejected the API key - check it in Settings → Voice."
+            raw.contains("Unable to resolve host", true) || raw.contains("timeout", true) -> "Couldn’t reach ElevenLabs - check your internet connection."
             else -> "ElevenLabs couldn’t speak: ${raw.take(140)}"
         }
 
@@ -296,7 +296,7 @@ class VoiceOutput(context: Context) {
                 .header("xi-api-key", key).build()
             http.newCall(req).execute().use { res ->
                 val text = res.body.string()
-                if (res.code == 401) throw IllegalStateException("ElevenLabs rejected this key — check it and try again.")
+                if (res.code == 401) throw IllegalStateException("ElevenLabs rejected this key - check it and try again.")
                 if (!res.isSuccessful) throw IllegalStateException("ElevenLabs HTTP ${res.code}")
                 json.parseToJsonElement(text).jsonObject["voices"]!!.jsonArray.mapNotNull { v ->
                     val o = v.jsonObject
@@ -352,7 +352,7 @@ class VoiceOutput(context: Context) {
             val req = Request.Builder().url("https://api.elevenlabs.io/v2/voices?page_size=60").header("xi-api-key", key).build()
             http.newCall(req).execute().use { res ->
                 val text = res.body.string()
-                if (res.code == 401) throw IllegalStateException("ElevenLabs rejected this key — check it and try again.")
+                if (res.code == 401) throw IllegalStateException("ElevenLabs rejected this key - check it and try again.")
                 if (!res.isSuccessful) throw IllegalStateException("ElevenLabs HTTP ${res.code}")
                 json.parseToJsonElement(text).jsonObject["voices"]!!.jsonArray.map { v ->
                     val o = v.jsonObject

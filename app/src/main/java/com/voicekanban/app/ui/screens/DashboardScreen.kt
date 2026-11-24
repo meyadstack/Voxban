@@ -60,7 +60,7 @@ private val CHART_COLORS = listOf(
 
 private fun Long.day(): LocalDate = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
 
-/** Home: everything at a glance — tasks, money, workouts, focus, notes and vault — mobile responsive. */
+/** Home: everything at a glance - tasks, money, workouts, focus, notes and vault - mobile responsive. */
 @Composable
 fun DashboardScreen(vm: MainViewModel, onSettings: () -> Unit) {
     val c = VK.colors
@@ -197,7 +197,7 @@ fun DashboardScreen(vm: MainViewModel, onSettings: () -> Unit) {
                                     val sz = if (maxWidth < 310.dp) 84.dp else 100.dp
                                     val donut: @Composable () -> Unit = {
                                         DonutChart(topCats.map { it.value }, CHART_COLORS, sz, 11.dp) {
-                                            Text(if (income > 0) "${(spent / income * 100).toInt()}%" else "—", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
+                                            Text(if (income > 0) "${(spent / income * 100).toInt()}%" else "-", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
                                         }
                                     }
                                     if (stack) {

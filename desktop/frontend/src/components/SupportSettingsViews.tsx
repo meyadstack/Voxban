@@ -75,7 +75,7 @@ export function SupportView({
       setNotice(`Ticket #${res.ticket.id} opened in Gmail Web Compose addressed to ${SUPPORT_EMAIL}.`);
     } else {
       await navigator.clipboard.writeText(`To: ${res.email.to}\nSubject: ${res.email.subject}\n\n${res.email.body}`);
-      setNotice(`Ticket #${res.ticket.id} copied to clipboard — paste and mail to ${SUPPORT_EMAIL}.`);
+      setNotice(`Ticket #${res.ticket.id} copied to clipboard - paste and mail to ${SUPPORT_EMAIL}.`);
     }
   };
 
@@ -451,7 +451,7 @@ export function SettingsView({
               <div className="font-semibold text-sm">
                 {release.title || release.latestTag}{" "}
                 <span className="font-normal text-xs" style={{ color: "var(--vk-ink-2)" }}>
-                  {release.updateAvailable ? "— Update available!" : "— You’re up to date"}
+                  {release.updateAvailable ? "- Update available!" : "- You’re up to date"}
                 </span>
               </div>
               <span className="font-mono text-[11px] px-2 py-0.5 rounded-full" style={{ background: "var(--vk-raised)" }}>

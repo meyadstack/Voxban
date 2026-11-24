@@ -5,7 +5,7 @@
 <h1 align="center">Voxban</h1>
 
 <p align="center">
-  <b>Your tasks, notes, money, workouts and passwords — run by a voice assistant that speaks your language.</b><br/>
+  <b>Your tasks, notes, money, workouts and passwords: run by a voice assistant that speaks your language.</b><br/>
   Android (Kotlin + Jetpack Compose) &amp; Desktop for Windows &amp; macOS (Rust + React/TypeScript/Tailwind + Tauri v2) · Gemini / ChatGPT / Claude · ElevenLabs voices
 </p>
 
@@ -17,7 +17,7 @@
 
 ---
 
-Voxban is a Kanban board with a calendar, AI note taker, money manager, workout tracker, focus timer and password vault in one app, with a dashboard that sums it all up — and you can run all of it by talking. Say *“Add call the plumber tomorrow at 10”*, *“I spent 350 on lunch”*, *“Make a note: milk, eggs, dentist Thursday 4pm”* or *“Save my Netflix login with a strong password”*, and the assistant does it — in English, বাংলা, हिन्दी, Español, العربية and 7 more languages, replying in a natural ElevenLabs voice that is native to the language you chose.
+Voxban is a Kanban board with a calendar, AI note taker, money manager, workout tracker, focus timer and password vault in one app, with a dashboard that sums it all up, and you can run all of it by talking. Say *“Add call the plumber tomorrow at 10”*, *“I spent 350 on lunch”*, *“Make a note: milk, eggs, dentist Thursday 4pm”* or *“Save my Netflix login with a strong password”*, and the assistant does it in English, বাংলা, हिन्दी, Español, العربية and 7 more languages, replying in a natural ElevenLabs voice that is native to the language you chose.
 
 ## 📸 Screenshots
 
@@ -49,37 +49,37 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 ## ✨ Features
 
-**🏠 Home dashboard** — everything at a glance: open / due-today / overdue tasks, a donut of tasks per stage, what’s coming up, this month’s income vs spending with a category donut and 7-day spending bars, today’s workout ring and weekly active minutes, focus time, notes, budgets and vault — each card opens its section.
+**🏠 Home dashboard**: everything at a glance: open / due-today / overdue tasks, a donut of tasks per stage, what’s coming up, this month’s income vs spending with a category donut and 7-day spending bars, today’s workout ring and weekly active minutes, focus time, notes, budgets and vault. Each card opens its section.
 
-**🗂 Kanban tasks + calendar & reminders** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with both board tasks and standalone **calendar-only reminders** (which stay out of the Kanban board, support Once / Daily / Weekly / Monthly repeat, and trigger exact alarm notifications). Tap any day to add a calendar reminder, add a dated board task, or move an unscheduled task onto it.
+**🗂 Kanban tasks + calendar & reminders**: multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with both board tasks and standalone **calendar-only reminders** (which stay out of the Kanban board, support Once / Daily / Weekly / Monthly repeat, and trigger exact alarm notifications). Tap any day to add a calendar reminder, add a dated board task, or move an unscheduled task onto it.
 
-**🏃 Workouts + music player & offline downloader** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player & Downloader** with song search, workout mood mixes, automatic radio queue, 150 MB disk audio caching, **one-tap offline music download** (saved locally & exported to `Music/Voxban`), saved favourites, and screen-off background playback with Android MediaStyle notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+**🏃 Workouts + music player & offline downloader**: walking, running, cycling, yoga, strength, HIIT, or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player & Downloader** with song search, workout mood mixes, automatic radio queue, 150 MB disk audio caching, **one-tap offline music download** (saved locally & exported to `Music/Voxban`), saved favourites, and screen-off background playback with Android MediaStyle notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
 
-**💻 Voxban Desktop for Windows & macOS (Rust + React) & Phone QR Sync** — full desktop companion in [`desktop/`](desktop/) powered by a **Rust** (`axum` / `tokio` / `aes-gcm` / `qrcode`) backend and a **React + TypeScript + Tailwind CSS** web frontend packaged natively via **Tauri v2** (Windows `.exe` / `.msi` installer & macOS `.dmg` for Apple Silicon and Intel). On launch, the desktop app displays a live QR code for you to scan from **Voxban Android → More → Pair Desktop** for instant Wi-Fi bidirectional sync — and if someone scans without having the phone app installed, it automatically opens [GitHub Releases](https://github.com/meyadstack/Voxban/releases/latest) to download the APK!
+**💻 Voxban Desktop for Windows & macOS (Rust + React) & Phone QR Sync**: full desktop companion in [`desktop/`](desktop/) powered by a **Rust** (`axum` / `tokio` / `aes-gcm` / `qrcode`) backend and a **React + TypeScript + Tailwind CSS** web frontend packaged natively via **Tauri v2** (Windows `.exe` / `.msi` installer & macOS `.dmg` for Apple Silicon and Intel). On launch, the desktop app displays a live QR code for you to scan from **Voxban Android → More → Pair Desktop** for instant Wi-Fi bidirectional sync, and if someone scans without having the phone app installed, it automatically opens [GitHub Releases](https://github.com/meyadstack/Voxban/releases/latest) to download the APK!
 
-**📱 Mobile responsive & in-app updates** — adapts smoothly across narrow phones, large displays, tablets, and landscape orientation (switching to a compact side navigation rail in landscape/wide viewports). Automatically checks [GitHub Releases](https://github.com/meyadstack/Voxban/releases) and downloads & installs newer APKs right inside the app (**Settings → App updates**).
+**📱 Mobile responsive & in-app updates**: adapts smoothly across narrow phones, large displays, tablets, and landscape orientation (switching to a compact side navigation rail in landscape/wide viewports). Automatically checks [GitHub Releases](https://github.com/meyadstack/Voxban/releases) and downloads & installs newer APKs right inside the app (**Settings → App updates**).
 
-**🎫 Support ticket system** — built-in Help & Support (**More → Support** or **Settings → Help & support**) so anyone can submit bug reports, feature requests, or questions directly to `abdullahmeyad7@gmail.com` with a generated ticket ID (`#VB-...`), optional screenshot attachment, privacy-safe device diagnostics, drafts, and local ticket history with one-tap email follow-ups.
+**🎫 Support ticket system**: built-in Help & Support (**More → Support** or **Settings → Help & support**) so anyone can submit bug reports, feature requests, or questions directly to `abdullahmeyad7@gmail.com` with a generated ticket ID (`#VB-...`), optional screenshot attachment, privacy-safe device diagnostics, drafts, and local ticket history with one-tap email follow-ups.
 
-**🧘 Focus mode** — pick 5–180 minutes and Voxban **locks the phone to the app** (Android app pinning) with a calm countdown screen, optionally turning on **Do Not Disturb**. It ends by itself; leaving early takes a deliberate 3-second hold.
+**🧘 Focus mode**: pick 5–180 minutes and Voxban **locks the phone to the app** (Android app pinning) with a calm countdown screen, optionally turning on **Do Not Disturb**. It ends by itself; leaving early takes a deliberate 3-second hold.
 
-**🎙 Voice AI with an interactive avatar** — a friendly character that blinks, follows your finger, giggles when tapped, shows ripples while it listens and moves its mouth with the real voice while it speaks. The same avatar appears in chat and is the app icon.
+**🎙 Voice AI with an interactive avatar**: a friendly character that blinks, follows your finger, giggles when tapped, shows ripples while it listens and moves its mouth with the real voice while it speaks. The same avatar appears in chat and is the app icon.
 
-**🧠 The AI can create, read, update and delete everything** — tasks, boards and stages, notes, money transactions and budgets, and saved logins. Every change it makes is listed under its reply with an **Undo** button. It remembers the conversation, so follow-ups like *“move it to done”* or *“make that high priority”* work.
+**🧠 The AI can create, read, update and delete everything**: tasks, boards and stages, notes, money transactions and budgets, and saved logins. Every change it makes is listed under its reply with an **Undo** button. It remembers the conversation, so follow-ups like *“move it to done”* or *“make that high priority”* work.
 
-**💬 Chat sessions** — typed chats are saved as separate conversations you can switch between, start fresh or delete. Voice keeps its own running conversation.
+**💬 Chat sessions**: typed chats are saved as separate conversations you can switch between, start fresh or delete. Voice keeps its own running conversation.
 
-**📝 AI note taker** — type or say scattered words; the AI writes a tidy note with headings, bullet points and checklists. Eight page colours, pinning, tick-off to-dos, direct text selection & one-tap copy without entering edit mode, multiline Enter support, and “add more” by typing or speaking.
+**📝 AI note taker**: type or say scattered words; the AI writes a tidy note with headings, bullet points and checklists. Eight page colours, pinning, tick-off to-dos, direct text selection & one-tap copy without entering edit mode, multiline Enter support, and “add more” by typing or speaking.
 
-**💰 Money manager** — income and expenses by category, monthly balance, budgets that turn red when you overspend, and a currency of your choice (৳, $, €, £, ₹ …). Or just say *“Got my salary 45,000”*.
+**💰 Money manager**: income and expenses by category, monthly balance, budgets that turn red when you overspend, and a currency of your choice (৳, $, €, £, ₹ …). Or just say *“Got my salary 45,000”*.
 
-**🔐 Password vault + autofill** — logins are encrypted with the phone’s keystore and unlocked with fingerprint, face or screen lock. As Android’s autofill service, Voxban offers to **save the password when you create an account** anywhere, and **suggests your saved login when you sign in** to an app or website. The AI can manage logins but never sees or speaks your passwords.
+**🔐 Password vault + autofill**: logins are encrypted with the phone’s keystore and unlocked with fingerprint, face or screen lock. As Android’s autofill service, Voxban offers to **save the password when you create an account** anywhere, and **suggests your saved login when you sign in** to an app or website. The AI can manage logins but never sees or speaks your passwords.
 
-**🌍 Native voices per language** — pick an ElevenLabs voice for each language. For Bangla and other languages Voxban lists native speakers from the ElevenLabs Voice Library (marked **Free** or **Paid plan**, with a ▶ sample) and uses the model each voice is verified for.
+**🌍 Native voices per language**: pick an ElevenLabs voice for each language. For Bangla and other languages Voxban lists native speakers from the ElevenLabs Voice Library (marked **Free** or **Paid plan**, with a ▶ sample) and uses the model each voice is verified for.
 
-**💾 Backup & restore** — export everything to one JSON file; after reinstalling, choose *Restore from backup file* on the first screen. Saved passwords are only included when you set a backup password, and are then encrypted with it (AES-256-GCM, PBKDF2).
+**💾 Backup & restore**: export everything to one JSON file; after reinstalling, choose *Restore from backup file* on the first screen. Saved passwords are only included when you set a backup password, and are then encrypted with it (AES-256-GCM, PBKDF2).
 
-**🔒 Private by design** — no account, no server. Data stays on your phone; API keys are stored encrypted and are only sent to the provider you chose.
+**🔒 Private by design**: no account, no server. Data stays on your phone; API keys are stored encrypted and are only sent to the provider you chose.
 
 ## 🚀 Setup guide
 
@@ -104,7 +104,7 @@ Without a key Voxban still understands simple task commands offline, but chat, n
 ### 3. Natural voices with ElevenLabs (optional, recommended)
 1. Create a free account at [elevenlabs.io](https://elevenlabs.io) → *Profile* → *API keys* → create a key.
 2. In **Settings → Voice**, paste it and tap **Save key**.
-3. Pick your language in **Settings → Profile & language**. The voice list then shows native speakers for that language — tap ▶ to hear a sample, tap a voice to use it.
+3. Pick your language in **Settings → Profile & language**. The voice list then shows native speakers for that language: tap ▶ to hear a sample, tap a voice to use it.
 4. On the free ElevenLabs plan choose voices marked **FREE**; voices marked **PAID PLAN** need a paid subscription. If a voice can’t be used, Voxban tells you why instead of switching to another voice.
 
 ### 4. Turn on password autofill
@@ -114,7 +114,7 @@ Without a key Voxban still understands simple task commands offline, but chat, n
 
 ### 5. Workouts
 1. Open **Workout**, tap a workout (or **+** to create your own), and allow **location** (distance & speed) and **physical activity** (steps) when asked.
-2. Tap ▶ to start; use **Pause** / **Finish**. It keeps tracking with the screen off — the notification shows the live timer.
+2. Tap ▶ to start; use **Pause** / **Finish**. It keeps tracking with the screen off; the notification shows the live timer.
 3. Tap the 🔔 button to set a **daily reminder** (time, days and workout). Set your body weight in **Settings → Workout** for accurate calories.
 
 ### 6. Focus mode
@@ -122,7 +122,7 @@ Without a key Voxban still understands simple task commands offline, but chat, n
 2. Tap **Start focusing** and confirm **App pinned**. Home, recents and other apps are blocked until the timer ends; hold **Give up** for 3 seconds to stop early.
 
 ### 7. Back up your data
-**Settings → Backup & restore → Export data (.json)**. Add a backup password to include your saved logins (you’ll need it to restore them — it can’t be recovered). Keep the file somewhere safe, e.g. Google Drive.
+**Settings → Backup & restore → Export data (.json)**. Add a backup password to include your saved logins (you’ll need it to restore them; it can’t be recovered). Keep the file somewhere safe, e.g. Google Drive.
 
 ### Things to say
 - “What should I work on next?” · “What’s overdue?”
@@ -196,7 +196,7 @@ desktop/
 
 ## 🔐 Privacy & security
 - Everything is stored locally. The vault uses `EncryptedSharedPreferences` (Android Keystore, AES-256).
-- Prompts sent to your AI provider include task, note and money summaries and **login names only** — never passwords.
+- Prompts sent to your AI provider include task, note and money summaries and **login names only**: never passwords.
 - Passwords you type in chat are masked in the history after they are saved.
 - Copied passwords are hidden from clipboard previews and cleared after 45 seconds.
 

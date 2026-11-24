@@ -36,7 +36,7 @@ enum class ReminderRepeat(val label: String) {
 
 /**
  * A standalone calendar reminder.
- * Shown ONLY in the Calendar — never added to any Kanban board or stage.
+ * Shown ONLY in the Calendar - never added to any Kanban board or stage.
  */
 @Serializable
 data class CalendarReminder(

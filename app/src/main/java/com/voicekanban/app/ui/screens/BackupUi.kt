@@ -69,7 +69,7 @@ fun BackupPanel(vm: MainViewModel) {
         if (vaultCount > 0) {
             InputField(pass, { pass = it }, "Backup password for your $vaultCount saved logins", leading = Icons.Rounded.Key)
             Text(
-                if (pass.isBlank()) "Leave empty to export without passwords." else "Passwords will be encrypted. You’ll need this password to restore them — it can’t be recovered.",
+                if (pass.isBlank()) "Leave empty to export without passwords." else "Passwords will be encrypted. You’ll need this password to restore them - it can’t be recovered.",
                 fontSize = 11.sp, color = if (pass.isBlank()) c.inkTertiary else c.medium,
             )
         }

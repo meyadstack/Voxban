@@ -35,7 +35,7 @@ pub fn status(data_dir: &Path, vault_exists: bool) -> BiometricStatus {
     }
 }
 
-/// Triggers the native OS Fingerprint / Touch ID prompt (blocking — call via `tokio::task::spawn_blocking`).
+/// Triggers the native OS Fingerprint / Touch ID prompt (blocking - call via `tokio::task::spawn_blocking`).
 pub fn verify_user(reason: &str) -> Result<(), String> {
     platform::verify_user(reason)
 }

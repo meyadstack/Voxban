@@ -517,7 +517,7 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="vk-card p-5 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">Tasks — {activeBoard.title}</h3>
+                    <h3 className="font-semibold">Tasks - {activeBoard.title}</h3>
                     <button onClick={() => setSection("BOARD")} className="text-xs underline bg-transparent border-0 cursor-pointer" style={{ color: "var(--vk-accent)" }}>
                       Open board →
                     </button>

@@ -254,8 +254,8 @@ class NewFeaturesTest {
     fun parsesGithubReleaseMarkdownChangelogCleanly() {
         val raw = """
             ### What's New in Voxban 3.4.1
-            - **Fixed Phone Pairing** — `Stage.color` now syncs smoothly.
-            - **Markdown Changelog** — [Release notes](https://github.com/meyadstack/Voxban) render cleanly.
+            - **Fixed Phone Pairing** - `Stage.color` now syncs smoothly.
+            - **Markdown Changelog** - [Release notes](https://github.com/meyadstack/Voxban) render cleanly.
 
             | Shot 1 | Shot 2 |
             |:---:|:---:|

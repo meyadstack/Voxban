@@ -48,11 +48,11 @@ class SpeechController(private val context: Context) {
                 finish()
                 if (!delivered && partial.isNotBlank()) { delivered = true; onResult(partial); return }
                 val msg = when (error) {
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is needed — allow it in the app’s settings."
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn’t catch that — tap the mic and try again."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is needed - allow it in the app’s settings."
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn’t catch that - tap the mic and try again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition needs a connection on this phone."
                     SpeechRecognizer.ERROR_AUDIO -> "Couldn’t access the microphone."
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The speech service is busy — try again in a moment."
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The speech service is busy - try again in a moment."
                     SpeechRecognizer.ERROR_CLIENT -> null // cancelled
                     else -> "Voice error ($error)."
                 }

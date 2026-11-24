@@ -394,9 +394,9 @@ private fun VoicePanel(vm: MainViewModel) {
         Text("Assistant voice", style = MaterialTheme.typography.titleMedium, color = c.ink)
         Text(
             when {
-                key.isBlank() -> "Add your ElevenLabs API key so replies are spoken by a natural ${lang.label} voice — get one free at elevenlabs.io → Profile → API keys. Without it, replies are only spoken if this phone has a ${lang.label} voice installed."
+                key.isBlank() -> "Add your ElevenLabs API key so replies are spoken by a natural ${lang.label} voice - get one free at elevenlabs.io → Profile → API keys. Without it, replies are only spoken if this phone has a ${lang.label} voice installed."
                 usingEleven -> "${lang.nativeName}: spoken by ${current!!.name} (ElevenLabs ${current.model.ifBlank { com.voicekanban.app.voice.VoiceOutput.modelFor(lang.iso) }.replace('_', ' ')})."
-                else -> "A native ${lang.label} voice is picked automatically the first time the assistant speaks — or choose one below."
+                else -> "A native ${lang.label} voice is picked automatically the first time the assistant speaks, or choose one below."
             },
             fontSize = 12.sp, color = c.inkSecondary,
         )
@@ -505,7 +505,7 @@ private fun sample(lang: com.voicekanban.app.data.AppLanguage, name: String): St
     com.voicekanban.app.data.AppLanguage.EN -> "Hi, I’m $name. Ready when you are."
 }
 
-/** Searchable model list — OpenRouter alone has hundreds of models. */
+/** Searchable model list - OpenRouter alone has hundreds of models. */
 @Composable
 private fun ModelPickerDialog(models: List<String>, current: String?, free: Set<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val c = VK.colors

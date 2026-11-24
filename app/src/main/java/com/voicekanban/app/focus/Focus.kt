@@ -20,7 +20,7 @@ import com.voicekanban.app.reminders.Reminders
 
 /**
  * Focus mode: a timed session during which Voxban pins itself to the screen
- * (Android app pinning — other apps and the home screen can't be opened) and
+ * (Android app pinning - other apps and the home screen can't be opened) and
  * can switch on Do Not Disturb. It ends on its own, even if the app is closed.
  */
 object Focus {

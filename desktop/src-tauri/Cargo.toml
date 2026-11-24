@@ -1,7 +1,7 @@
 [package]
 name = "voxban-desktop"
 version = "3.5.1"
-description = "Voxban for Windows PC — Native Rust + WebView2 Desktop App"
+description = "Voxban for Windows PC - Native Rust + WebView2 Desktop App"
 authors = ["meyadstack"]
 edition = "2021"
 

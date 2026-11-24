@@ -107,12 +107,12 @@ object CloudProviders {
         val hint = when (code) {
             400 -> if (msg.contains("model", true)) "Pick another model in Settings." else ""
             401, 403 -> "Check the API key in Settings."
-            404 -> "This model isn’t available to your key — pick another in Settings."
+            404 -> "This model isn’t available to your key - pick another in Settings."
             429 -> "Rate limit or out of credit/quota on this key."
             in 500..599 -> "The provider is having problems; try again shortly."
             else -> ""
         }
-        return "HTTP $code: $msg${if (hint.isNotEmpty()) " — $hint" else ""}"
+        return "HTTP $code: $msg${if (hint.isNotEmpty()) " - $hint" else ""}"
     }
 
     private fun openAi(key: String, model: String, system: String, history: List<Turn>, maxTokens: Int): String {
@@ -157,7 +157,7 @@ object CloudProviders {
         }
         // OpenRouter can return 200 with an error object (e.g. upstream provider failure).
         (res["error"] as? JsonObject)?.let { err ->
-            throw CloudException("OpenRouter: ${err["message"]?.jsonPrimitive?.contentOrNull ?: "provider error"} — try another model in Settings.")
+            throw CloudException("OpenRouter: ${err["message"]?.jsonPrimitive?.contentOrNull ?: "provider error"} - try another model in Settings.")
         }
         return res["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() }
@@ -221,9 +221,9 @@ object CloudProviders {
             if (text.isBlank()) throw CloudException("Claude returned an empty response.")
             return text
         } catch (e: UnauthorizedException) {
-            throw CloudException("Claude rejected the API key — check it in Settings.")
+            throw CloudException("Claude rejected the API key - check it in Settings.")
         } catch (e: RateLimitException) {
-            throw CloudException("Claude rate limit or out of credit — try again shortly.")
+            throw CloudException("Claude rate limit or out of credit - try again shortly.")
         } catch (e: AnthropicServiceException) {
             throw CloudException("Claude HTTP ${e.statusCode()}: ${e.message?.take(160)}")
         } catch (e: AnthropicIoException) {

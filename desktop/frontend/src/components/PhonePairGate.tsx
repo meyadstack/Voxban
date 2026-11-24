@@ -158,7 +158,7 @@ export function PhonePairGate({
                   <b style={{ color: "var(--vk-ink)" }}>More → Pair Desktop</b> (or Settings → Desktop sync).
                 </li>
                 <li>
-                  Point your phone camera at this QR code — your boards, calendar reminders, notes, workouts &amp; music favourites sync automatically.
+                  Point your phone camera at this QR code - your boards, calendar reminders, notes, workouts &amp; music favourites sync automatically.
                 </li>
               </ol>
             </div>
@@ -176,7 +176,7 @@ export function PhonePairGate({
                 <span>Don’t have the Voxban phone app yet?</span>
               </div>
               <p className="text-xs leading-relaxed" style={{ color: "var(--vk-ink-2)" }}>
-                Scan the QR code with your phone’s regular camera app — or click below — to jump straight to{" "}
+                Scan the QR code with your phone’s regular camera app, or click below - to jump straight to{" "}
                 <b>GitHub Releases</b> and download the latest Voxban Android APK.
               </p>
               <button
@@ -191,7 +191,7 @@ export function PhonePairGate({
 
             <div className="flex items-center justify-between text-xs px-1" style={{ color: "var(--vk-ink-3)" }}>
               <span className="inline-flex items-center gap-1.5">
-                <Wifi className="w-3.5 h-3.5" /> Local LAN sync — no cloud server
+                <Wifi className="w-3.5 h-3.5" /> Local LAN sync - no cloud server
               </span>
               {!isModal && (
                 <button

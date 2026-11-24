@@ -98,7 +98,7 @@ export function AssistantView({ state, onReplaceState }: Props) {
     "Add review Q4 budget high priority",
     "Remind me to call dentist tomorrow",
     "I spent 450 on groceries",
-    "Note: Launch checklist — polish docs, verify Windows build",
+    "Note: Launch checklist - polish docs, verify Windows build",
   ];
 
   return (

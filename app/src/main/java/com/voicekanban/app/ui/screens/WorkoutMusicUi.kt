@@ -170,7 +170,7 @@ fun WorkoutMusicCard(
             )
         } else {
             Text(
-                "Stream ad-free workout tracks in the background with screen-off controls — pick a vibe or search any song.",
+                "Stream ad-free workout tracks in the background with screen-off controls - pick a vibe or search any song.",
                 fontSize = 12.sp,
                 color = c.inkSecondary,
             )
@@ -554,7 +554,7 @@ fun WorkoutMusicSheet(
                     }
                 } else if (!searching && searchError == null) {
                     Text(
-                        "Search for any song, artist, or workout playlist above — or tap a vibe chip to load workout tracks instantly.",
+                        "Search for any song, artist, or workout playlist above, or tap a vibe chip to load workout tracks instantly.",
                         fontSize = 13.sp,
                         color = c.inkSecondary,
                         modifier = Modifier.padding(top = 14.dp),

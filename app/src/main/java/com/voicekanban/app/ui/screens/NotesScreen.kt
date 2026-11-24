@@ -144,7 +144,7 @@ fun NotesScreen(vm: MainViewModel) {
             }
             if (notes.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                 Text(
-                    if (query.isNotBlank()) "No notes match “$query”." else "Your notes will appear here. Jot down scattered words above — or just say them — and the AI turns them into a tidy, colourful note.",
+                    if (query.isNotBlank()) "No notes match “$query”." else "Your notes will appear here. Jot down scattered words above, or just say them, and the AI turns them into a tidy, colourful note.",
                     color = c.inkSecondary, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
                 )
             }
@@ -166,7 +166,7 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, composing: Boolea
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text("Drop your thoughts", style = MaterialTheme.typography.titleMedium, color = c.ink)
-                Text("Type or say scattered words — I’ll write the note.", fontSize = 12.sp, color = c.inkSecondary)
+                Text("Type or say scattered words - I’ll write the note.", fontSize = 12.sp, color = c.inkSecondary)
             }
         }
         TextField(
@@ -286,7 +286,7 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 10.dp)) {
                 if (editing) {
                     PlainField(title, { title = it }, "Title", big = true)
-                    PlainField(body, { body = it }, "Write freely — # heading, - bullet, - [ ] to-do, **bold**", big = false)
+                    PlainField(body, { body = it }, "Write freely - # heading, - bullet, - [ ] to-do, **bold**", big = false)
                 } else {
                     SelectionContainer {
                         Column {

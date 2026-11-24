@@ -616,7 +616,7 @@ private fun OnboardingScreen(vm: MainViewModel) {
                         ) {
                             Text("Meet your assistant", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = c.onLime.copy(alpha = 0.7f))
                             Text(
-                                "Hi $previewName — I can manage your tasks, write notes from scattered words and keep your passwords safe.",
+                                "Hi $previewName - I can manage your tasks, write notes from scattered words and keep your passwords safe.",
                                 fontSize = if (r.isCompactWidth) 16.sp else 18.sp,
                                 lineHeight = 23.sp,
                                 fontWeight = FontWeight.Normal,

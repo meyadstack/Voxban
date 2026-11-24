@@ -108,7 +108,7 @@ fun FocusScreen(vm: MainViewModel) {
                     }
 
                     Option(Icons.Rounded.PushPin, "Lock the phone to Voxban", "Pins the app (Android app pinning): home, recents and other apps are blocked until the session ends.", pin) { pin = it }
-                    Option(Icons.Rounded.DoNotDisturbOn, "Do Not Disturb", if (dndAllowed) "Silences calls and notifications (except your priority contacts) while you focus." else "Needs permission — tap to allow Voxban to turn on Do Not Disturb.", dnd && dndAllowed) { on ->
+                    Option(Icons.Rounded.DoNotDisturbOn, "Do Not Disturb", if (dndAllowed) "Silences calls and notifications (except your priority contacts) while you focus." else "Needs permission - tap to allow Voxban to turn on Do Not Disturb.", dnd && dndAllowed) { on ->
                         if (on && !dndAllowed) runCatching { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
                         dnd = on
                     }

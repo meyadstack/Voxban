@@ -115,7 +115,7 @@ fun SupportSettingsPanel(vm: MainViewModel, onOpenSupport: () -> Unit) {
             }
         }
         Text(
-            "Report a bug, request a feature, or ask for help — tickets are mailed straight to ${SupportTicketManager.SUPPORT_EMAIL} with a tracking ID.",
+            "Report a bug, request a feature, or ask for help - tickets are mailed straight to ${SupportTicketManager.SUPPORT_EMAIL} with a tracking ID.",
             fontSize = 12.sp,
             color = c.inkSecondary,
         )
@@ -225,7 +225,7 @@ fun SupportSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                 vm.showToast(
                     ToastKind.INFO,
                     "Ticket #${ticket.id} copied to clipboard",
-                    "No email app found — paste and send to ${SupportTicketManager.SUPPORT_EMAIL}",
+                    "No email app found - paste and send to ${SupportTicketManager.SUPPORT_EMAIL}",
                 )
             }
         }

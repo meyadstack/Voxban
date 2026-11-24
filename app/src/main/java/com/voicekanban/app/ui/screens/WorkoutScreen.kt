@@ -259,7 +259,7 @@ private fun LiveCard(w: LiveWorkout, weightKg: Double, onPause: () -> Unit, onRe
                     Text(if (w.gpsFix) "  GPS locked" else "  Finding GPS… go outdoors for distance", fontSize = 12.sp, color = ink.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (w.speedHistory.size > 2) Sparkline(w.speedHistory, Color(0xFF2E7A55), Modifier.padding(top = 8.dp).fillMaxWidth().height(36.dp))
-            } else if (w.type.gps) Text("Location is off — only time and calories are tracked.", fontSize = 12.sp, color = ink.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+            } else if (w.type.gps) Text("Location is off - only time and calories are tracked.", fontSize = 12.sp, color = ink.copy(alpha = 0.7f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
 
             // Responsive equal-weight controls (never overflows on compact phones!)
             Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

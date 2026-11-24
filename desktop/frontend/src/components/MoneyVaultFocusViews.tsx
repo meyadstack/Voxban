@@ -215,7 +215,7 @@ export function VaultView() {
         if (r.biometric) {
           setBiometric(r.biometric);
           setEnrollOnUnlock(!r.exists && r.biometric.available);
-          // Automatically prompt Touch ID / Windows Hello Fingerprint on entering Vault — no extra unlock button needed!
+          // Automatically prompt Touch ID / Windows Hello Fingerprint on entering Vault - no extra unlock button needed!
           if (r.exists && r.biometric.available && r.biometric.enrolled && !autoPromptedRef.current) {
             autoPromptedRef.current = true;
             void unlockWithBiometric(r.biometric.label);
@@ -242,7 +242,7 @@ export function VaultView() {
         if (res.biometricWarning) {
           setBioNotice(res.biometricWarning);
         } else if (shouldEnroll && res.biometric?.enrolled) {
-          setBioNotice(`${res.biometric.label} enabled — next time it will prompt automatically.`);
+          setBioNotice(`${res.biometric.label} enabled - next time it will prompt automatically.`);
         }
       } else {
         setError(res.error || "Wrong master password.");
@@ -266,7 +266,7 @@ export function VaultView() {
       } else {
         const res = await api.vaultBiometricEnable(passphrase || undefined);
         if (res.biometric) setBiometric(res.biometric);
-        setBioNotice(`${res.biometric?.label || biometric.label} enabled — Vault will auto-ask next time.`);
+        setBioNotice(`${res.biometric?.label || biometric.label} enabled - Vault will auto-ask next time.`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -334,7 +334,7 @@ export function VaultView() {
             ? bioEnrolled
               ? justLocked
                 ? `Vault locked. Tap the fingerprint icon for ${biometric.label} or enter your master password.`
-                : `${biometric.label} prompts automatically — or enter your master password below.`
+                : `${biometric.label} prompts automatically, or enter your master password below.`
               : "Enter your master password to decrypt your AES-256-GCM vault."
             : "Choose a master password to create your local AES-256-GCM encrypted vault."}
         </p>
@@ -447,7 +447,7 @@ export function VaultView() {
             <div>
               <div className="font-semibold text-sm">{e.title}</div>
               <div className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-                {e.username || "—"} {e.url ? `· ${e.url}` : ""}
+                {e.username || "-"} {e.url ? `· ${e.url}` : ""}
               </div>
               <div className="text-xs font-mono mt-1">
                 {revealed[e.id] ? e.password : "••••••••••••"}
