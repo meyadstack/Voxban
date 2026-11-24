@@ -41,9 +41,13 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 **🏠 Home dashboard** — everything at a glance: open / due-today / overdue tasks, a donut of tasks per stage, what’s coming up, this month’s income vs spending with a category donut and 7-day spending bars, today’s workout ring and weekly active minutes, focus time, notes, budgets and vault — each card opens its section.
 
-**🗂 Kanban tasks + calendar** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with tasks on each day; tap a day to add a task with a time, stage, priority and reminder, or move an unscheduled task onto it.
+**🗂 Kanban tasks + calendar & reminders** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with both board tasks and standalone **calendar-only reminders** (which stay out of the Kanban board, support Once / Daily / Weekly / Monthly repeat, and trigger exact alarm notifications). Tap any day to add a calendar reminder, add a dated board task, or move an unscheduled task onto it.
 
-**🏃 Workouts** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+**🏃 Workouts + music player** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player** with song search, workout mood mixes, automatic radio queue, audio caching for faster playback, saved favourites, and screen-off background playback with notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+
+**📱 Mobile responsive & in-app updates** — adapts smoothly across narrow phones, large displays, tablets, and landscape orientation (switching to a compact side navigation rail in landscape/wide viewports). Automatically checks [GitHub Releases](https://github.com/meyadstack/Voxban/releases) and downloads & installs newer APKs right inside the app (**Settings → App updates**).
+
+**🎫 Support ticket system** — built-in Help & Support (**More → Support** or **Settings → Help & support**) so anyone can submit bug reports, feature requests, or questions directly to `abdullahmeyad7@gmail.com` with a generated ticket ID (`#VB-...`), optional screenshot attachment, privacy-safe device diagnostics, drafts, and local ticket history with one-tap email follow-ups.
 
 **🧘 Focus mode** — pick 5–180 minutes and Voxban **locks the phone to the app** (Android app pinning) with a calm countdown screen, optionally turning on **Do Not Disturb**. It ends by itself; leaving early takes a deliberate 3-second hold.
 
@@ -146,10 +150,13 @@ app/src/main/java/com/voicekanban/app/
   autofill/   Android autofill service (save + suggest logins) and unlock screen
   fitness/    live workout tracker (GPS, steps, timer), foreground service, daily reminder
   focus/      focus sessions: app pinning, Do Not Disturb, end alarm
+  music/      workout music search/streaming engine, 150 MB audio disk cache, Media3 ExoPlayer & media notification service
   data/       models, repository (JSON state + encrypted vault), backup format
-  reminders/  deadline alarms and notification actions
+  reminders/  deadline & calendar-only reminder alarms and notification actions
   security/   biometric lock
-  ui/         Compose screens: home dashboard, tasks & calendar, voice AI & chat, workout, notes, money, vault, focus, settings
+  support/    support ticket formatting, diagnostics, and direct email dispatch
+  update/     GitHub Releases checker and in-app APK downloader/installer
+  ui/         Compose screens: home dashboard, tasks & calendar, voice AI & chat, workout & music, notes, money, vault, focus, settings
   voice/      speech recognition and ElevenLabs / phone text-to-speech
   widget/     home-screen widget
 ```

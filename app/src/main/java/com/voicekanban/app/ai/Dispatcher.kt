@@ -35,6 +35,8 @@ data class Outcome(
     /** Non-null when money data changed. */
     val transactions: List<Transaction>? = null,
     val budgets: List<Budget>? = null,
+    /** Non-null when calendar-only reminders changed. */
+    val calendarReminders: List<com.voicekanban.app.data.CalendarReminder>? = null,
 ) {
     val mutated: Boolean get() = changes.isNotEmpty()
 }
@@ -120,9 +122,11 @@ object Dispatcher {
     fun apply(
         actions: List<Action>, start: Workspace, startNotes: List<Note> = emptyList(), startVault: List<PasswordEntry> = emptyList(),
         startTx: List<Transaction> = emptyList(), startBudgets: List<Budget> = emptyList(), currency: String = "",
+        startReminders: List<com.voicekanban.app.data.CalendarReminder> = emptyList(),
     ): Outcome {
         var txs = startTx; var txChanged = false
         var budgets = startBudgets; var budgetsChanged = false
+        var calRems = startReminders; var calRemsChanged = false
         fun money(a: Double) = com.voicekanban.app.data.formatMoney(a, currency)
         var ws = start
         var notes = startNotes; var notesChanged = false
@@ -408,6 +412,22 @@ object Dispatcher {
                 budgetsChanged = true
                 changes += if (a.limit == null || a.limit <= 0) "Removed the $cat budget" else "Set the $cat budget to ${money(a.limit)} a month"
             }
+            is Action.AddReminder -> {
+                val title = a.title.trim()
+                if (title.isEmpty()) { failures += "A reminder needs a title."; continue }
+                val rem = com.voicekanban.app.data.CalendarReminder(
+                    id = newId("rem"), title = title, notes = a.notes.trim(),
+                    at = a.at, remindBeforeMin = a.remindBeforeMin, repeat = a.repeat,
+                )
+                calRems = listOf(rem) + calRems; calRemsChanged = true
+                changes += "Added calendar reminder “$title” · ${DateParser.label(a.at)}"
+            }
+            is Action.DeleteReminder -> {
+                val r = best(calRems, a.reminder) { it.title + " " + it.notes }
+                if (r == null) { failures += "No calendar reminder matches “${a.reminder}”"; continue }
+                calRems = calRems.filterNot { it.id == r.id }; calRemsChanged = true
+                changes += "Deleted calendar reminder “${r.title}”"
+            }
             is Action.Unknown -> if (a.message.isNotBlank()) failures += a.message
         }
         return Outcome(
@@ -419,6 +439,7 @@ object Dispatcher {
             touchedNoteIds = touchedNotes,
             transactions = if (txChanged) txs else null,
             budgets = if (budgetsChanged) budgets else null,
+            calendarReminders = if (calRemsChanged) calRems else null,
         )
     }
 

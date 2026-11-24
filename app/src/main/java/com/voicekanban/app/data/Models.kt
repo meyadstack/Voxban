@@ -18,6 +18,97 @@ val REMINDER_CHOICES: List<Pair<Int?, String>> = listOf(
     24 * 60 to "1 day before",
 )
 
+/** Alert lead times for standalone calendar reminders (always notifies). */
+val CAL_REMINDER_CHOICES: List<Pair<Int, String>> = listOf(
+    0 to "At time",
+    15 to "15 min before",
+    60 to "1 hour before",
+    24 * 60 to "1 day before",
+)
+
+@Serializable
+enum class ReminderRepeat(val label: String) {
+    NONE("Once"),
+    DAILY("Daily"),
+    WEEKLY("Weekly"),
+    MONTHLY("Monthly"),
+}
+
+/**
+ * A standalone calendar reminder.
+ * Shown ONLY in the Calendar — never added to any Kanban board or stage.
+ */
+@Serializable
+data class CalendarReminder(
+    val id: String,
+    val title: String,
+    val notes: String = "",
+    /** Scheduled date & time (epoch millis). */
+    val at: Long,
+    /** Minutes before [at] to fire the alert (0 = right on time). */
+    val remindBeforeMin: Int = 0,
+    val repeat: ReminderRepeat = ReminderRepeat.NONE,
+    val done: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+) {
+    fun occursOn(day: java.time.LocalDate, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Boolean {
+        val start = java.time.Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
+        if (day.isBefore(start)) return false
+        return when (repeat) {
+            ReminderRepeat.NONE -> day == start
+            ReminderRepeat.DAILY -> true
+            ReminderRepeat.WEEKLY -> day.dayOfWeek == start.dayOfWeek
+            ReminderRepeat.MONTHLY -> {
+                val targetDom = start.dayOfMonth.coerceAtMost(day.lengthOfMonth())
+                day.dayOfMonth == targetDom
+            }
+        }
+    }
+
+    /** Returns the next occurrence timestamp (epoch millis) whose alarm trigger is still in the future. */
+    fun nextOccurrenceAt(nowMs: Long = System.currentTimeMillis(), zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Long? {
+        if (done) return null
+        val leadMs = remindBeforeMin * 60_000L
+        if (repeat == ReminderRepeat.NONE) {
+            return if (at - leadMs > nowMs - 60_000L) at else null
+        }
+        var zdt = java.time.Instant.ofEpochMilli(at).atZone(zone)
+        val anchorDom = zdt.dayOfMonth
+        var guard = 0
+        while (zdt.toInstant().toEpochMilli() - leadMs <= nowMs && guard < 1500) {
+            zdt = when (repeat) {
+                ReminderRepeat.DAILY -> zdt.plusDays(1)
+                ReminderRepeat.WEEKLY -> zdt.plusWeeks(1)
+                ReminderRepeat.MONTHLY -> {
+                    val nextMonth = zdt.plusMonths(1)
+                    nextMonth.withDayOfMonth(anchorDom.coerceAtMost(nextMonth.toLocalDate().lengthOfMonth()))
+                }
+                ReminderRepeat.NONE -> break
+            }
+            guard++
+        }
+        return zdt.toInstant().toEpochMilli()
+    }
+
+    /** Advances a repeating reminder to the occurrence strictly after [afterMs]. */
+    fun advanceAfter(afterMs: Long = System.currentTimeMillis(), zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): CalendarReminder {
+        if (repeat == ReminderRepeat.NONE) return copy(done = true)
+        val next = nextOccurrenceAt(afterMs + remindBeforeMin * 60_000L + 60_000L, zone) ?: return copy(done = true)
+        return copy(at = next, done = false)
+    }
+}
+
+/** A track saved or played in the workout music player. */
+@Serializable
+data class WorkoutTrack(
+    val videoId: String,
+    val title: String,
+    val artist: String = "",
+    val album: String = "",
+    val durationSec: Long = 0L,
+    val thumbnailUrl: String = "",
+)
+
 @Serializable
 data class Card(
     val id: String,
@@ -149,6 +240,10 @@ data class Settings(
     val currency: String = "",
     /** Body weight for calorie estimates. */
     val weightKg: Double = 70.0,
+    /** Automatically check GitHub Releases for app updates on startup. */
+    val autoCheckUpdates: Boolean = true,
+    /** Release tag the user chose to skip ("Later"). */
+    val dismissedUpdateTag: String = "",
 ) {
     val appLanguage: AppLanguage get() = AppLanguage.byCode(language)
 
@@ -354,6 +449,46 @@ data class ActiveFocus(
     val previousFilter: Int = 1,
 )
 
+// ---------------------------------------------------------------- support tickets
+
+@Serializable
+enum class SupportCategory(val label: String, val emoji: String) {
+    BUG("Bug report", "🐛"),
+    FEATURE("Feature request", "✨"),
+    AI_VOICE("AI & Voice", "🎙️"),
+    WORKOUT_MUSIC("Workout & Music", "🎵"),
+    DATA_VAULT("Backup & Vault", "🔐"),
+    OTHER("General help", "💬"),
+}
+
+@Serializable
+enum class SupportPriority(val label: String) {
+    LOW("Low"),
+    NORMAL("Normal"),
+    URGENT("Urgent"),
+}
+
+@Serializable
+enum class SupportTicketStatus(val label: String) {
+    SENT("Sent"),
+    DRAFT("Draft"),
+    RESOLVED("Resolved"),
+}
+
+@Serializable
+data class SupportTicket(
+    val id: String,
+    val category: SupportCategory = SupportCategory.BUG,
+    val priority: SupportPriority = SupportPriority.NORMAL,
+    val subject: String,
+    val description: String,
+    val contactEmail: String = "",
+    val includeDiagnostics: Boolean = true,
+    val status: SupportTicketStatus = SupportTicketStatus.SENT,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
 @Serializable
 data class AppState(
     val workspace: Workspace,
@@ -374,6 +509,12 @@ data class AppState(
     val workoutReminder: WorkoutReminder = WorkoutReminder(),
     val focusSessions: List<FocusSession> = emptyList(),
     val activeFocus: ActiveFocus? = null,
+    /** Calendar-only reminders (never shown on the Kanban board). */
+    val calendarReminders: List<CalendarReminder> = emptyList(),
+    /** Saved favourite tracks for the workout music player. */
+    val savedWorkoutTracks: List<WorkoutTrack> = emptyList(),
+    /** Support tickets created by the user and mailed to support. */
+    val supportTickets: List<SupportTicket> = emptyList(),
 ) {
     val types: List<WorkoutType> get() = workoutTypes.ifEmpty { DEFAULT_WORKOUT_TYPES }
     val activeSession: ChatSession? get() = sessions.firstOrNull { it.id == activeSessionId }

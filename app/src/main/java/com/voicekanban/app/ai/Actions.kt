@@ -51,6 +51,10 @@ sealed interface Action {
     data class DeleteTransaction(val tx: String) : Action
     data class SetBudget(val category: String, val limit: Double?) : Action
 
+    // Calendar-only reminders (never added to the Kanban board)
+    data class AddReminder(val title: String, val at: Long, val notes: String = "", val repeat: com.voicekanban.app.data.ReminderRepeat = com.voicekanban.app.data.ReminderRepeat.NONE, val remindBeforeMin: Int = 0) : Action
+    data class DeleteReminder(val reminder: String) : Action
+
     data class Unknown(val message: String) : Action
 }
 
@@ -181,6 +185,19 @@ fun actionFromJson(el: JsonElement): Action? {
         )
         "delete_transaction", "remove_transaction" -> Action.DeleteTransaction(o.str("transaction", "tx", "id", "match") ?: return null)
         "set_budget", "budget" -> Action.SetBudget(o.str("category") ?: return null, o.num("limit", "amount", "budget"))
+        "add_reminder", "create_reminder", "calendar_reminder", "set_reminder", "remind" -> {
+            val title = o.str("title", "text", "reminder", "message") ?: return null
+            val at = due ?: (System.currentTimeMillis() + 60 * 60_000L)
+            val rep = when (o.str("repeat", "recurrence")?.lowercase()) {
+                "daily", "every day" -> com.voicekanban.app.data.ReminderRepeat.DAILY
+                "weekly", "every week" -> com.voicekanban.app.data.ReminderRepeat.WEEKLY
+                "monthly", "every month" -> com.voicekanban.app.data.ReminderRepeat.MONTHLY
+                else -> com.voicekanban.app.data.ReminderRepeat.NONE
+            }
+            val before = o.num("remindBeforeMin", "before", "leadMin")?.toInt()?.coerceAtLeast(0) ?: 0
+            Action.AddReminder(title, at, o.str("notes", "note", "details") ?: "", rep, before)
+        }
+        "delete_reminder", "remove_reminder" -> Action.DeleteReminder(o.str("reminder", "title", "text") ?: return null)
         "unknown" -> Action.Unknown(o.str("message") ?: "")
         else -> null
     }

@@ -13,8 +13,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
@@ -97,20 +99,21 @@ fun VaultScreen(vm: MainViewModel) {
         }
 
         if (!unlocked) {
-            Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Box(Modifier.size(96.dp).clip(CircleShape).background(c.limeTile), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Shield, null, tint = c.onLime, modifier = Modifier.size(44.dp))
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Box(Modifier.size(90.dp).clip(CircleShape).background(c.limeTile), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Shield, null, tint = c.onLime, modifier = Modifier.size(42.dp))
                 }
-                Text("Your vault is locked", style = MaterialTheme.typography.headlineSmall, color = c.ink, modifier = Modifier.padding(top = 18.dp))
-                Text("Passwords are encrypted with your phone’s keystore. The AI can add, change and remove logins for you, but never sees or speaks your passwords.", color = c.inkSecondary, textAlign = TextAlign.Center, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
-                Button(onClick = ::unlock, Modifier.padding(top = 22.dp).height(52.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised)) {
+                Text("Your vault is locked", style = MaterialTheme.typography.headlineSmall, color = c.ink, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 18.dp))
+                Text("Passwords are encrypted with your phone’s keystore. The AI can add, change and remove logins for you, but never sees or speaks your passwords.", color = c.inkSecondary, textAlign = TextAlign.Center, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 360.dp))
+                Button(onClick = ::unlock, Modifier.padding(top = 22.dp).heightIn(min = 52.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised)) {
                     Icon(Icons.Rounded.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Unlock")
                 }
             }
             return@Column
         }
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val r = VK.responsive
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = r.gutter, end = r.gutter, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { AutofillCard() }
             if (vault.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -252,8 +255,13 @@ private fun EntryEditor(vm: MainViewModel, e: PasswordEntry, onDismiss: () -> Un
             InputField(title, { title = it }, "Name (e.g. Gmail, Netflix)", leading = Icons.Rounded.Shield)
             InputField(user, { user = it }, "Username or email", leading = Icons.Rounded.Person)
             InputField(pw, { pw = it }, "Password", leading = Icons.Rounded.Key)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(strength(pw).first, color = strength(pw).second(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(strength(pw).first, color = strength(pw).second(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 10.dp))
                 TextButton(onClick = { pw = vm.generatePassword() }) { Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Generate strong password", color = c.accentText) }
             }
             InputField(url, { url = it }, "Website (optional)", leading = Icons.Rounded.Language)

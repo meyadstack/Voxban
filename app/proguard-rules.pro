@@ -39,6 +39,23 @@
 
 # App data classes are (de)serialized by kotlinx.serialization (rules ship with the library).
 -keep class com.voicekanban.app.data.** { *; }
+-keep class com.voicekanban.app.update.** { *; }
+-keep class com.voicekanban.app.music.** { *; }
+-keep class com.voicekanban.app.support.** { *; }
 -dontwarn com.google.auto.value.AutoValue
 -dontwarn java.lang.reflect.AnnotatedParameterizedType
 -dontwarn java.lang.reflect.AnnotatedType
+
+# Audio streaming engine, QuackJS, Ktor & Media3
+-keep class com.metrolist.innertubex.** { *; }
+-keep class com.metrolist.quackjs.** { *; }
+-keep class meow.nyx.quackjs.** { *; }
+-keep class io.ktor.** { *; }
+-dontwarn com.metrolist.**
+-dontwarn meow.nyx.quackjs.**
+-dontwarn io.ktor.**
+-dontwarn org.codehaus.mojo.animal_sniffer.**
+-dontwarn kotlinx.atomicfu.**
+-dontwarn javax.naming.**
+-dontwarn java.lang.management.**
+-dontwarn sun.misc.**

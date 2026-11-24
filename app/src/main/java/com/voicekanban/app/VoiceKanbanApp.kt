@@ -27,13 +27,14 @@ class VoiceKanbanApp : Application() {
         val repo = Repository.get(this)
         // Keep reminders, the widget and the status-bar shortcut in sync with the data.
         repo.state
-            .map { Triple(it.workspace, it.settings.remindersEnabled, it.settings.quickActionsEnabled) }
+            .map { listOf(it.workspace, it.calendarReminders, it.settings.remindersEnabled, it.settings.quickActionsEnabled) }
             .distinctUntilChanged()
             .debounce(600)
-            .onEach { (ws, reminders, quick) ->
-                Reminders.sync(this, ws, reminders)
+            .onEach {
+                val s = repo.state.value
+                Reminders.sync(this, s.workspace, s.settings.remindersEnabled, s.calendarReminders)
                 BoardWidget.refresh(this)
-                if (quick) QuickActions.show(this, ws) else QuickActions.hide(this)
+                if (s.settings.quickActionsEnabled) QuickActions.show(this, s.workspace) else QuickActions.hide(this)
             }
             .launchIn(appScope)
         repo.state.map { it.workoutReminder }.distinctUntilChanged()
@@ -62,6 +63,10 @@ class VoiceKanbanApp : Application() {
             description = "Persistent shortcut to talk to your board"
             setShowBadge(false); setSound(null, null); enableVibration(false)
         })
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_MUSIC, "Workout music", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Playback controls for workout music"
+            setShowBadge(false); setSound(null, null); enableVibration(false)
+        })
     }
 
     companion object {
@@ -71,5 +76,6 @@ class VoiceKanbanApp : Application() {
         const val CHANNEL_WORKOUT = "workout"
         const val CHANNEL_WORKOUT_LIVE = "workout-live"
         const val CHANNEL_FOCUS = "focus"
+        const val CHANNEL_MUSIC = "workout-music"
     }
 }

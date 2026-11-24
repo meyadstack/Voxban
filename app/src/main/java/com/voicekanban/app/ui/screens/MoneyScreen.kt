@@ -85,14 +85,20 @@ fun MoneyScreen(vm: MainViewModel) {
             },
         )
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val r = VK.responsive
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = r.gutter, end = r.gutter, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             // Summary
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(20.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(if (r.isCompactWidth) 16.dp else 20.dp)) {
                     Text("Balance this month", fontSize = 12.sp, color = c.onLime.copy(alpha = 0.7f), fontWeight = FontWeight.Medium)
                     Text(
                         (if (income - spent < 0) "−" else "") + formatMoney(kotlin.math.abs(income - spent), cur),
-                        fontSize = 38.sp, lineHeight = 44.sp, color = c.onLime, letterSpacing = (-1).sp,
+                        fontSize = if (r.isCompactWidth) 30.sp else 38.sp,
+                        lineHeight = if (r.isCompactWidth) 36.sp else 44.sp,
+                        color = c.onLime,
+                        letterSpacing = (-1).sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Stat(Modifier.weight(1f), "Income", formatMoney(income, cur), c.low)
@@ -175,7 +181,7 @@ private fun Stat(modifier: Modifier, label: String, value: String, dot: Color) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(dot)); Spacer(Modifier.width(6.dp))
             Text(label, fontSize = 12.sp, color = Color(0xFF1B201C).copy(alpha = 0.7f))
         }
-        Text(value, fontSize = 18.sp, color = Color(0xFF1B201C), fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+        Text(value, fontSize = if (VK.responsive.isCompactWidth) 16.sp else 18.sp, color = Color(0xFF1B201C), fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -196,13 +202,13 @@ private fun TxRow(t: Transaction, cur: String, onClick: () -> Unit) {
             Text(categoryEmoji(t.type, t.category), fontSize = 20.sp)
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
             Text(t.note.ifBlank { t.category }, color = c.ink, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(t.category + " · " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(t.at)), color = c.inkTertiary, fontSize = 12.sp)
+            Text(t.category + " · " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(t.at)), color = c.inkTertiary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
             (if (t.type == TxType.INCOME) "+" else "−") + formatMoney(t.amount, cur),
-            color = if (t.type == TxType.INCOME) c.low else c.ink, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+            color = if (t.type == TxType.INCOME) c.low else c.ink, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1,
         )
     }
 }

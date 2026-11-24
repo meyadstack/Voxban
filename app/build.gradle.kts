@@ -23,8 +23,8 @@ android {
         applicationId = "com.voicekanban.app.native"
         minSdk = 28
         targetSdk = 36
-        versionCode = 8
-        versionName = "3.2.1"
+        versionCode = 9
+        versionName = "3.3.0"
     }
 
     signingConfigs {
@@ -49,6 +49,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -92,4 +93,21 @@ dependencies {
     // Claude via the official Anthropic SDK.
     implementation("com.anthropic:anthropic-java:3.12.0")
 
+    // Workout music player engine + Media3 playback & disk caching.
+    implementation("com.github.MetrolistGroup.innertubex:innertubex:v0.13.1")
+    implementation("io.ktor:ktor-client-okhttp:3.6.1")
+    implementation("io.ktor:ktor-client-content-negotiation:3.6.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.1")
+
+    val media3Version = "1.11.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("androidx.media3:media3-datasource:$media3Version")
+    implementation("androidx.media3:media3-database:$media3Version")
+
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+
+    testImplementation("junit:junit:4.13.2")
 }

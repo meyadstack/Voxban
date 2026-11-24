@@ -88,24 +88,26 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 
-/** Bottom sheet chrome: keyboard-aware (imePadding) and scrollable. */
+/** Bottom sheet chrome: keyboard-aware (imePadding), responsive padding & width, scrollable. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val c = VK.colors
+    val r = VK.responsive
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetMaxWidth = 640.dp,
         containerColor = c.background,
         contentWindowInsets = { androidx.compose.foundation.layout.WindowInsets(0) },
     ) {
-        Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
+        Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = r.headerGutter)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.headlineSmall, color = c.ink)
-                    subtitle?.let { Text(it, fontSize = 12.sp, color = c.inkSecondary) }
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    subtitle?.let { Text(it, fontSize = 12.sp, color = c.inkSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 }
-                Box(Modifier.size(32.dp).clip(CircleShape).background(c.surfaceWell).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(34.dp).clip(CircleShape).background(c.surfaceWell).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.Close, "Close", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
                 }
             }
@@ -137,7 +139,7 @@ fun CardEditorSheet(card: Card, board: Board, onDismiss: () -> Unit, onSave: (Ca
         InputField(notes, { notes = it }, "Details, links, context…", singleLine = false)
 
         SectionLabel("Deadline")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             OutlinedButton(onClick = { pickDate = true }, shape = RoundedCornerShape(8.dp)) {
                 Icon(Icons.Rounded.Event, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                 Text(due?.let { DateParser.label(it) } ?: "Set date")
@@ -279,6 +281,7 @@ private fun ActionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
 
 // ---------------------------------------------------------------- boards
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BoardsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
     val c = VK.colors
@@ -322,7 +325,7 @@ fun BoardsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
                         Button(onClick = { confirmDelete = null; vm.deleteBoard(b.id) }, colors = ButtonDefaults.buttonColors(containerColor = c.danger)) { Text("Delete") }
                     }
                 } else if (renaming != b.id) {
-                    Row(Modifier.padding(top = 10.dp, start = 32.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Chip("Rename", icon = Icons.Rounded.Edit) { renaming = b.id; renameText = b.title }
                         Chip("Duplicate", icon = Icons.Rounded.ContentCopy) { vm.duplicateBoard(b.id); onDismiss() }
                         Chip("Delete", icon = Icons.Rounded.DeleteOutline, tint = c.danger) { confirmDelete = b.id }
@@ -332,7 +335,7 @@ fun BoardsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         }
         Column(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).background(c.surfaceWell).border(1.dp, c.border, RoundedCornerShape(8.dp)).padding(12.dp)) {
             Text("New board", style = MaterialTheme.typography.labelLarge, color = c.ink)
-            Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Presets.templates.forEach { (name, _) -> Chip(name, selected = template == name) { template = name } }
             }
             InputField(newTitle, { newTitle = it }, "Board name, e.g. Marketing Q3", onDone = { vm.createBoard(newTitle, template); onDismiss() })

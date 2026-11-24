@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,7 +90,12 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
+fun SettingsSheet(
+    vm: MainViewModel,
+    onDismiss: () -> Unit,
+    onOpenUpdateSheet: () -> Unit = {},
+    onOpenSupport: () -> Unit = {},
+) {
     val c = VK.colors
     val app by vm.state.collectAsState()
     val s = app.settings
@@ -157,11 +163,17 @@ fun SettingsSheet(vm: MainViewModel, onDismiss: () -> Unit) {
         SectionLabel("Notifications")
         NotificationRows(vm)
 
+        SectionLabel("App updates")
+        UpdateSettingsPanel(vm, onOpenUpdateSheet = onOpenUpdateSheet)
+
+        SectionLabel("Help & support")
+        SupportSettingsPanel(vm, onOpenSupport = onOpenSupport)
+
         SectionLabel("Appearance")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { m -> Chip(m.name.lowercase().replaceFirstChar { it.uppercase() }, Modifier.weight(1f), selected = s.themeMode == m) { vm.updateSettings { it.copy(themeMode = m) } } }
         }
-        Text("Voxban 3.2.1 · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
+        Text("Voxban ${com.voicekanban.app.BuildConfig.VERSION_NAME} · native Kotlin", fontSize = 11.sp, color = c.inkTertiary, modifier = Modifier.padding(top = 20.dp))
     }
 }
 
@@ -190,6 +202,7 @@ private fun ToggleRow(icon: ImageVector, title: String, body: String, checked: B
 
 // ---------------------------------------------------------------- cloud
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CloudEnginePanel(vm: MainViewModel, engine: Engine) {
     val c = VK.colors
@@ -225,7 +238,7 @@ private fun CloudEnginePanel(vm: MainViewModel, engine: Engine) {
             shape = RoundedCornerShape(8.dp),
             colors = TextFieldDefaults.colors(focusedContainerColor = c.surface, unfocusedContainerColor = c.surface, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, focusedTextColor = c.ink, unfocusedTextColor = c.ink),
         )
-        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
                 onClick = {
                     vm.setKey(engine.name, draft)
@@ -503,7 +516,7 @@ private fun ModelPickerDialog(models: List<String>, current: String?, free: Set<
             Column {
                 InputField(query, { query = it }, "Search ${models.size} models")
                 if (free.isNotEmpty()) Row(Modifier.padding(top = 8.dp)) { Chip("Free only", selected = freeOnly) { freeOnly = !freeOnly } }
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(top = 8.dp).height(360.dp)) {
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(top = 8.dp).heightIn(max = 300.dp)) {
                     items(shown.size) { i ->
                         val m = shown[i]
                         Row(

@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -130,15 +133,17 @@ fun timeAgo(ts: Long): String {
 private fun clockTime(ts: Long): String =
     SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(ts))
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun BoardScreen(vm: MainViewModel) {
+fun BoardScreen(vm: MainViewModel, onOpenUpdateSheet: () -> Unit = {}, onOpenSupport: () -> Unit = {}) {
     val app by vm.state.collectAsState()
     val board = app.workspace.activeBoard
     val highlight by vm.highlight.collectAsState()
     val focusStage by vm.focusStage.collectAsState()
+    val openCalDate by vm.openCalendarDate.collectAsState()
     val busy by vm.busy.collectAsState()
     val c = VK.colors
+    val r = VK.responsive
     val scope = rememberCoroutineScope()
 
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -152,7 +157,16 @@ fun BoardScreen(vm: MainViewModel) {
     var settingsOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
     var calendarOpen by remember { mutableStateOf(false) }
+    var calendarInitialDate by remember { mutableStateOf(java.time.LocalDate.now()) }
     var command by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(openCalDate) {
+        openCalDate?.let { d ->
+            calendarInitialDate = d
+            calendarOpen = true
+            vm.clearOpenCalendar()
+        }
+    }
 
     val filtering = query.isNotBlank() || priorityFilter != null
     fun visible(cards: List<Card>) = cards.filter { card ->
@@ -169,22 +183,26 @@ fun BoardScreen(vm: MainViewModel) {
 
     val open = board.stages.filterNot { board.isDone(it.id) }.flatMap { it.cards }
     val urgentCount = open.count { it.priority == Priority.HIGH }
+    val todayReminderCount = remember(app.calendarReminders) {
+        val today = java.time.LocalDate.now()
+        app.calendarReminders.count { !it.done && it.occursOn(today) }
+    }
 
     Box(Modifier.fillMaxSize().background(c.background)) {
         Column(Modifier.fillMaxSize()) {
-            // ---------------------------------------------------------------- header (matches screenshot Tasks header)
+            // ---------------------------------------------------------------- header
             Surface(color = c.background, shadowElevation = 0.dp) {
-                Column(Modifier.statusBarsPadding().padding(horizontal = 18.dp).padding(top = 8.dp, bottom = 10.dp)) {
-                    // Top Bar: Left circular button (Boards), Centered Title ("Tasks" / board title), Right circular button (Settings/More)
+                Column(Modifier.statusBarsPadding().padding(horizontal = r.headerGutter).padding(top = if (r.isCompactHeight) 4.dp else 8.dp, bottom = if (r.isCompactHeight) 6.dp else 10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         HeaderCircleButton(Icons.Rounded.Layers, "Switch board") { boardsOpen = true }
                         Column(
-                            Modifier.weight(1f).clickable { boardsOpen = true },
+                            Modifier.weight(1f).padding(horizontal = 6.dp).clickable { boardsOpen = true },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
                                 board.title.ifBlank { "Tasks" },
                                 style = MaterialTheme.typography.headlineSmall,
+                                fontSize = if (r.isCompactWidth) 18.sp else 21.sp,
                                 color = c.ink,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -194,27 +212,36 @@ fun BoardScreen(vm: MainViewModel) {
                                     "${app.settings.userName} · ${app.settings.appLanguage.nativeName}",
                                     fontSize = 11.sp,
                                     color = c.inkSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
                         HeaderCircleButton(Icons.Rounded.MoreVert, "Settings") { settingsOpen = true }
                     }
 
-                    // Stage / View Pills row ("To Do", "In Progress", "+", search, help) matching screenshot's "Today / Calendar / +"
+                    // Stage / View Pills row
                     LazyRow(
-                        Modifier.padding(top = 14.dp),
+                        Modifier.padding(top = if (r.isCompactHeight) 8.dp else 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         item {
-                            // Calendar: see tasks by day, add a task to a day with a reminder.
+                            // Calendar: shows board tasks + calendar-only reminders
                             Row(
-                                Modifier.height(38.dp).clip(CircleShape).background(c.limeTile)
-                                    .clickable { calendarOpen = true }.padding(horizontal = 14.dp),
+                                Modifier.heightIn(min = 38.dp).clip(CircleShape).background(c.limeTile)
+                                    .clickable { calendarInitialDate = java.time.LocalDate.now(); calendarOpen = true }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Icon(Icons.Rounded.CalendarMonth, "Calendar", tint = c.onLime, modifier = Modifier.size(17.dp))
-                                Text(" Calendar", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = c.onLime)
+                                Text(
+                                    if (todayReminderCount > 0) " Calendar · $todayReminderCount" else " Calendar",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = c.onLime,
+                                    maxLines = 1,
+                                )
                             }
                         }
                         items(board.stages.size) { i ->
@@ -286,65 +313,79 @@ fun BoardScreen(vm: MainViewModel) {
                         }
                     }
 
-                    // "All time Completed" container card with 3 squircle tiles (Sage, Lime, White) — exact match to screenshot
-                    Column(
-                        Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(26.dp))
-                            .background(c.surface).border(1.dp, c.border, RoundedCornerShape(26.dp))
-                            .padding(14.dp),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    // Overview container: full 3-tile card on standard screens, compact 1-line bar on short screens (< 620 dp)
+                    if (r.screenHeightDp >= 620) {
+                        Column(
+                            Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                                .background(c.surface).border(1.dp, c.border, RoundedCornerShape(26.dp))
+                                .padding(if (r.isCompactWidth) 10.dp else 14.dp),
                         ) {
-                            Text(
-                                "All time Completed",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = c.ink,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Icon(
-                                Icons.Rounded.Code,
-                                null,
-                                tint = c.inkSecondary,
-                                modifier = Modifier.size(16.dp),
-                            )
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "All time Completed",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = c.ink,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    Icons.Rounded.Code,
+                                    null,
+                                    tint = c.inkSecondary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            Row(
+                                Modifier.padding(top = 8.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(if (r.isCompactWidth) 6.dp else 10.dp),
+                            ) {
+                                OverviewStatTile(
+                                    modifier = Modifier.weight(1f),
+                                    value = "${board.totalCards}",
+                                    label = "Total Tasks",
+                                    bg = c.sageTile,
+                                    fg = c.ink,
+                                    subFg = c.ink.copy(alpha = 0.72f),
+                                )
+                                OverviewStatTile(
+                                    modifier = Modifier.weight(1f),
+                                    value = "${board.progressPct}%",
+                                    label = "Completed",
+                                    bg = c.limeTile,
+                                    fg = c.onLime,
+                                    subFg = c.onLime.copy(alpha = 0.72f),
+                                )
+                                OverviewStatTile(
+                                    modifier = Modifier.weight(1f),
+                                    value = "${board.doneCount}/$urgentCount",
+                                    label = "Done · Urgent",
+                                    bg = c.raised,
+                                    fg = c.inkSecondary,
+                                    subFg = c.inkTertiary,
+                                )
+                            }
                         }
+                    } else if (!r.isCompactHeight) {
                         Row(
-                            Modifier.padding(top = 10.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            Modifier.padding(top = 8.dp).fillMaxWidth().clip(CircleShape)
+                                .background(c.surface).border(1.dp, c.border, CircleShape)
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            OverviewStatTile(
-                                modifier = Modifier.weight(1f),
-                                value = "${board.totalCards}",
-                                label = "Total Tasks",
-                                bg = c.sageTile,
-                                fg = c.ink,
-                                subFg = c.ink.copy(alpha = 0.72f),
-                            )
-                            OverviewStatTile(
-                                modifier = Modifier.weight(1f),
-                                value = "${board.progressPct}%",
-                                label = "Completed",
-                                bg = c.limeTile,
-                                fg = c.onLime,
-                                subFg = c.onLime.copy(alpha = 0.72f),
-                            )
-                            OverviewStatTile(
-                                modifier = Modifier.weight(1f),
-                                value = "${board.doneCount}/${urgentCount}",
-                                label = "Done · Urgent",
-                                bg = c.raised,
-                                fg = c.inkSecondary,
-                                subFg = c.inkTertiary,
-                            )
+                            Text("${board.totalCards} tasks", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = c.ink)
+                            Text("${board.progressPct}% done", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c.accentText)
+                            Text("${board.doneCount} done · $urgentCount urgent", fontSize = 11.sp, color = c.inkSecondary)
                         }
                     }
 
                     AnimatedVisibility(searchOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                         Column {
-                            InputField(query, { query = it }, "Search titles, notes or #tags", Modifier.padding(top = 12.dp), leading = Icons.Rounded.Search)
-                            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            InputField(query, { query = it }, "Search titles, notes or #tags", Modifier.padding(top = 10.dp), leading = Icons.Rounded.Search)
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Chip("All", selected = priorityFilter == null) { priorityFilter = null }
                                 Priority.entries.forEach { p -> Chip(p.label, selected = priorityFilter == p, tint = c.priorityFg(p)) { priorityFilter = p } }
                             }
@@ -355,16 +396,17 @@ fun BoardScreen(vm: MainViewModel) {
 
             // ---------------------------------------------------------------- columns ("Today Tasks" cards)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val wide = maxWidth > 700.dp
+                val wide = maxWidth >= 600.dp
                 if (wide) {
-                    Row(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    val colW = (maxWidth / 2 - 24.dp).coerceIn(280.dp, 360.dp)
+                    Row(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).padding(horizontal = r.gutter, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         board.stages.forEachIndexed { i, s ->
-                            StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, Modifier.width(330.dp).fillMaxHeight(),
+                            StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, Modifier.width(colW).fillMaxHeight(),
                                 onEdit = { editing = it }, onActions = { actionsFor = it }, onStageOptions = { stageFocus = s.id; stagesOpen = true })
                         }
                     }
                 } else {
-                    HorizontalPager(pager, Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 18.dp), pageSpacing = 12.dp) { i ->
+                    HorizontalPager(pager, Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = r.headerGutter), pageSpacing = 12.dp) { i ->
                         val s = board.stages[i]
                         StageColumn(vm, board, s, i, visible(s.cards), filtering, highlight, Modifier.fillMaxSize().padding(top = 4.dp, bottom = 8.dp),
                             onEdit = { editing = it }, onActions = { actionsFor = it }, onStageOptions = { stageFocus = s.id; stagesOpen = true })
@@ -397,16 +439,22 @@ fun BoardScreen(vm: MainViewModel) {
     }
     if (boardsOpen) BoardsSheet(vm, onDismiss = { boardsOpen = false })
     if (stagesOpen) StagesSheet(vm, board, stageFocus, onDismiss = { stagesOpen = false })
-    if (settingsOpen) SettingsSheet(vm, onDismiss = { settingsOpen = false })
-    if (calendarOpen) CalendarSheet(vm, board, onDismiss = { calendarOpen = false })
+    if (settingsOpen) SettingsSheet(
+        vm,
+        onDismiss = { settingsOpen = false },
+        onOpenUpdateSheet = { settingsOpen = false; onOpenUpdateSheet() },
+        onOpenSupport = { settingsOpen = false; onOpenSupport() },
+    )
+    if (calendarOpen) CalendarSheet(vm, board, initialDate = calendarInitialDate, onDismiss = { calendarOpen = false })
     if (helpOpen) HelpSheet(onDismiss = { helpOpen = false }, onTry = { helpOpen = false; vm.openAssistant(false); vm.sendChat(it) })
 }
 
 @Composable
 private fun HeaderCircleButton(icon: ImageVector, label: String, active: Boolean = false, onClick: () -> Unit) {
     val c = VK.colors
+    val sz = if (VK.responsive.isCompactWidth) 40.dp else 44.dp
     Box(
-        Modifier.size(44.dp).clip(CircleShape)
+        Modifier.size(sz).clip(CircleShape)
             .background(if (active) c.limeTile else c.raised)
             .border(1.dp, if (active) Color.Transparent else c.buttonBorder, CircleShape)
             .clickable(onClick = onClick),
@@ -423,18 +471,21 @@ private fun OverviewStatTile(
     fg: Color,
     subFg: Color,
 ) {
+    val compact = VK.responsive.isCompactWidth
     Column(
-        modifier.height(94.dp).clip(RoundedCornerShape(22.dp)).background(bg).padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier.heightIn(min = if (compact) 76.dp else 90.dp).clip(RoundedCornerShape(20.dp)).background(bg)
+            .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.Bottom,
     ) {
         Text(
             value,
-            fontSize = 27.sp,
-            lineHeight = 30.sp,
+            fontSize = if (compact) 22.sp else 27.sp,
+            lineHeight = if (compact) 26.sp else 30.sp,
             fontWeight = FontWeight.Normal,
             color = fg,
             letterSpacing = (-0.8).sp,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             label,
@@ -442,6 +493,7 @@ private fun OverviewStatTile(
             fontWeight = FontWeight.Medium,
             color = subFg,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp),
         )
     }
@@ -590,7 +642,7 @@ private fun StageColumn(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun TaskCard(
     card: Card,
@@ -640,7 +692,8 @@ private fun TaskCard(
             .combinedClickable(onClick = onClick, onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); onLongPress() })
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        // Editorial row: large display title on left, "Start / 03:20 PM" metadata on right (matching screenshot)
+        // Editorial row: large display title on left, "Start / 03:20 PM" metadata on right
+        val compact = VK.responsive.isCompactWidth
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -648,15 +701,15 @@ private fun TaskCard(
         ) {
             Text(
                 card.text,
-                fontSize = 24.sp,
-                lineHeight = 28.sp,
+                fontSize = if (compact) 20.sp else 23.sp,
+                lineHeight = if (compact) 24.sp else 27.sp,
                 fontWeight = FontWeight.Normal,
                 letterSpacing = (-0.6).sp,
                 color = if (isDone) onCardSub else onCardInk,
                 textDecoration = if (isDone) TextDecoration.LineThrough else null,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(end = 12.dp),
+                modifier = Modifier.weight(1f).padding(end = 10.dp),
             )
             Column(horizontalAlignment = Alignment.End) {
                 Text(
@@ -666,9 +719,10 @@ private fun TaskCard(
                 )
                 Text(
                     clockTime(card.dueAt ?: card.createdAt),
-                    fontSize = 16.sp,
+                    fontSize = if (compact) 14.sp else 16.sp,
                     fontWeight = FontWeight.Normal,
                     color = onCardInk,
+                    maxLines = 1,
                 )
             }
         }
@@ -684,32 +738,41 @@ private fun TaskCard(
             )
         }
 
-        // Secondary action/pill row
+        // Responsive secondary metadata (wraps cleanly on narrow screens) + guaranteed-visible action buttons
         Row(
             Modifier.padding(top = 12.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            PriorityPill(card.priority, onClick = onPriority)
-            card.tags.take(2).forEach { t ->
-                Text(
-                    "#$t",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = onCardInk,
-                    modifier = Modifier.clip(CircleShape).background(onCardInk.copy(alpha = 0.08f)).padding(horizontal = 9.dp, vertical = 3.dp),
+            FlowRow(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                PriorityPill(card.priority, onClick = onPriority)
+                card.tags.take(2).forEach { t ->
+                    Text(
+                        "#$t",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = onCardInk,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clip(CircleShape).background(onCardInk.copy(alpha = 0.08f)).padding(horizontal = 9.dp, vertical = 3.dp),
+                    )
+                }
+                card.dueAt?.let { DueChip(it, isDone) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (canLeft) MoveButton(Icons.AutoMirrored.Rounded.ArrowBack, "Move to previous stage", onCardInk, onLeft)
+                if (canRight) MoveButton(Icons.AutoMirrored.Rounded.ArrowForward, "Move to next stage", onCardInk, onRight)
+                Icon(
+                    Icons.Rounded.MoreHoriz,
+                    "More actions",
+                    tint = onCardSub,
+                    modifier = Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onLongPress).padding(4.dp),
                 )
             }
-            card.dueAt?.let { DueChip(it, isDone) }
-            Spacer(Modifier.weight(1f))
-            if (canLeft) MoveButton(Icons.AutoMirrored.Rounded.ArrowBack, "Move to previous stage", onCardInk, onLeft)
-            if (canRight) MoveButton(Icons.AutoMirrored.Rounded.ArrowForward, "Move to next stage", onCardInk, onRight)
-            Icon(
-                Icons.Rounded.MoreHoriz,
-                "More actions",
-                tint = onCardSub,
-                modifier = Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onLongPress).padding(4.dp),
-            )
         }
     }
 }
@@ -727,9 +790,10 @@ private fun MoveButton(icon: ImageVector, label: String, tint: Color, onClick: (
 @Composable
 private fun CommandBar(value: String, onValue: (String) -> Unit, busy: Boolean, onSend: () -> Unit, onTalk: () -> Unit) {
     val c = VK.colors
+    val r = VK.responsive
     Surface(color = c.background) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
+            Modifier.fillMaxWidth().padding(horizontal = r.headerGutter, vertical = 6.dp)
                 .clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

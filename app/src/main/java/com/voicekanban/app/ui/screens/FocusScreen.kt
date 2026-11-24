@@ -75,6 +75,7 @@ fun FocusScreen(vm: MainViewModel) {
     val today = LocalDate.now()
     val todayMin = app.focusSessions.filter { Instant.ofEpochMilli(it.startedAt).atZone(ZoneId.systemDefault()).toLocalDate() == today }.sumOf { it.actualSec } / 60
 
+    val r = VK.responsive
     Column(Modifier.fillMaxSize().background(c.background)) {
         ScreenHeader(
             title = "Focus",
@@ -82,51 +83,60 @@ fun FocusScreen(vm: MainViewModel) {
             leading = { Spacer(Modifier.size(44.dp)) },
             trailing = { Spacer(Modifier.size(44.dp)) },
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.verticalGradient(listOf(c.limeTile, c.voiceSecondary.copy(alpha = 0.6f)))).padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                AiAvatar(AvatarMood.IDLE, Modifier.size(120.dp), halo = false)
-                Text("$minutes min", fontSize = 46.sp, color = Color(0xFF16201A), letterSpacing = (-1).sp)
-                Text("Phone locked to Voxban until the timer ends", fontSize = 13.sp, color = Color(0xFF16201A).copy(alpha = 0.7f), textAlign = TextAlign.Center)
-                Slider(
-                    minutes.toFloat(), { minutes = (it / 5).toInt() * 5 }, valueRange = 5f..180f, modifier = Modifier.padding(top = 10.dp),
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF16201A), activeTrackColor = Color(0xFF16201A), inactiveTrackColor = Color.White.copy(alpha = 0.6f)),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(15, 25, 45, 60, 90).forEach { m -> Chip("$m", Modifier.weight(1f), selected = minutes == m) { minutes = m } }
-                }
-            }
-
-            Option(Icons.Rounded.PushPin, "Lock the phone to Voxban", "Pins the app (Android app pinning): home, recents and other apps are blocked until the session ends.", pin) { pin = it }
-            Option(Icons.Rounded.DoNotDisturbOn, "Do Not Disturb", if (dndAllowed) "Silences calls and notifications (except your priority contacts) while you focus." else "Needs permission — tap to allow Voxban to turn on Do Not Disturb.", dnd && dndAllowed) { on ->
-                if (on && !dndAllowed) runCatching { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
-                dnd = on
-            }
-
-            Button(
-                onClick = { vm.startFocus(minutes, pin, dnd && dndAllowed) },
-                Modifier.fillMaxWidth().height(58.dp), shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.limeTile),
-            ) { Icon(Icons.Rounded.SelfImprovement, null); Spacer(Modifier.width(8.dp)); Text("Start focusing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
-            Text(
-                "When pinning starts Android shows “App pinned”. The only way out early is to hold “Give up” for 3 seconds (or Android’s own unpin gesture, which this app can’t disable).",
-                fontSize = 11.sp, color = c.inkTertiary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-            )
-
-            if (app.focusSessions.isNotEmpty()) {
-                Text("Recent sessions", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.padding(top = 6.dp))
-                app.focusSessions.take(10).forEach { f ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.raised).border(1.dp, c.border, RoundedCornerShape(18.dp)).padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = r.gutter).padding(bottom = 24.dp)) {
+            com.voicekanban.app.ui.theme.ResponsiveContainer(maxWidth = r.formMaxWidth) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.verticalGradient(listOf(c.limeTile, c.voiceSecondary.copy(alpha = 0.6f)))).padding(if (r.isCompactWidth) 16.dp else 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(if (f.completed) "✅" else "⏹", fontSize = 18.sp)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("${f.actualSec / 60} of ${f.plannedMin} min", color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(relativeTime(f.startedAt) + if (f.completed) " · completed" else " · ended early", color = c.inkSecondary, fontSize = 12.sp)
+                        AiAvatar(AvatarMood.IDLE, Modifier.size(if (r.isCompactHeight) 84.dp else 116.dp), halo = false)
+                        Text("$minutes min", fontSize = if (r.isCompactWidth) 38.sp else 46.sp, color = Color(0xFF16201A), letterSpacing = (-1).sp)
+                        Text("Phone locked to Voxban until the timer ends", fontSize = 13.sp, color = Color(0xFF16201A).copy(alpha = 0.7f), textAlign = TextAlign.Center)
+                        Slider(
+                            minutes.toFloat(), { minutes = (it / 5).toInt() * 5 }, valueRange = 5f..180f, modifier = Modifier.padding(top = 10.dp),
+                            colors = SliderDefaults.colors(thumbColor = Color(0xFF16201A), activeTrackColor = Color(0xFF16201A), inactiveTrackColor = Color.White.copy(alpha = 0.6f)),
+                        )
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            listOf(15, 25, 45, 60, 90).forEach { m -> Chip("$m min", selected = minutes == m) { minutes = m } }
+                        }
+                    }
+
+                    Option(Icons.Rounded.PushPin, "Lock the phone to Voxban", "Pins the app (Android app pinning): home, recents and other apps are blocked until the session ends.", pin) { pin = it }
+                    Option(Icons.Rounded.DoNotDisturbOn, "Do Not Disturb", if (dndAllowed) "Silences calls and notifications (except your priority contacts) while you focus." else "Needs permission — tap to allow Voxban to turn on Do Not Disturb.", dnd && dndAllowed) { on ->
+                        if (on && !dndAllowed) runCatching { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
+                        dnd = on
+                    }
+
+                    Button(
+                        onClick = { vm.startFocus(minutes, pin, dnd && dndAllowed) },
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.limeTile),
+                    ) { Icon(Icons.Rounded.SelfImprovement, null); Spacer(Modifier.width(8.dp)); Text("Start focusing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+                    Text(
+                        "When pinning starts Android shows “App pinned”. The only way out early is to hold “Give up” for 3 seconds (or Android’s own unpin gesture, which this app can’t disable).",
+                        fontSize = 11.sp, color = c.inkTertiary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    if (app.focusSessions.isNotEmpty()) {
+                        Text("Recent sessions", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.padding(top = 6.dp))
+                        app.focusSessions.take(10).forEach { f ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.raised).border(1.dp, c.border, RoundedCornerShape(18.dp)).padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(if (f.completed) "✅" else "⏹", fontSize = 18.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("${f.actualSec / 60} of ${f.plannedMin} min", color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text(relativeTime(f.startedAt) + if (f.completed) " · completed" else " · ended early", color = c.inkSecondary, fontSize = 12.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -166,42 +176,51 @@ fun FocusOverlay(vm: MainViewModel, f: ActiveFocus) {
     val quote = quotes[((f.startedAt / 1000) % quotes.size).toInt()]
     val ink = Color(0xFFEAFF87)
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0E1410), Color(0xFF1B2A20)))).statusBarsPadding().navigationBarsPadding()) {
-        Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("FOCUS MODE", color = ink.copy(alpha = 0.7f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-            Spacer(Modifier.height(24.dp))
-            ProgressRing(1f - left.toFloat() / totalMs, 280.dp, ink, 10.dp, track = Color.White.copy(alpha = 0.08f)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    AiAvatar(AvatarMood.THINKING, Modifier.size(86.dp), halo = false)
-                    val s = left / 1000
-                    Text(if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60) else "%02d:%02d".format(s / 60, s % 60), color = Color.White, fontSize = 52.sp, letterSpacing = (-1).sp)
-                    Text("of ${f.plannedMin} min", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
-                }
-            }
-            Spacer(Modifier.height(28.dp))
-            Text(quote, color = Color.White.copy(alpha = 0.85f), fontSize = 18.sp, textAlign = TextAlign.Center)
-            Text(
-                listOfNotNull(if (f.pinned) "Phone locked to Voxban" else null, if (f.dnd) "Do Not Disturb on" else null).joinToString(" · ").ifBlank { "Stay with it" },
-                color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-        // Hold to give up.
-        Box(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp).height(52.dp).width(240.dp).clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown()
-                        val job = scope.launch { hold.animateTo(1f, tween(3000)); vm.endFocus(completed = false) }
-                        waitForUpOrCancellation()
-                        job.cancel()
-                        scope.launch { hold.animateTo(0f, tween(250)) }
-                    }
-                },
-            contentAlignment = Alignment.CenterStart,
+    BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0E1410), Color(0xFF1B2A20)))).statusBarsPadding().navigationBarsPadding()) {
+        val ringSize = minOf(maxWidth * 0.72f, maxHeight * 0.44f, 272.dp).coerceAtLeast(164.dp)
+        val avatarSz = (ringSize * 0.30f).coerceIn(48.dp, 86.dp)
+        val timerFont = if (ringSize < 200.dp) 34.sp else 50.sp
+
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(hold.value).background(Color(0xFFF28B82).copy(alpha = 0.45f)))
-            Text("Hold 3 s to give up", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.align(Alignment.Center))
+            Text("FOCUS MODE", color = ink.copy(alpha = 0.7f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 14.dp)) {
+                ProgressRing(1f - left.toFloat() / totalMs, ringSize, ink, if (ringSize < 200.dp) 8.dp else 10.dp, track = Color.White.copy(alpha = 0.08f)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AiAvatar(AvatarMood.THINKING, Modifier.size(avatarSz), halo = false)
+                        val s = left / 1000
+                        Text(if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60) else "%02d:%02d".format(s / 60, s % 60), color = Color.White, fontSize = timerFont, letterSpacing = (-1).sp, maxLines = 1)
+                        Text("of ${f.plannedMin} min", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(quote, color = Color.White.copy(alpha = 0.85f), fontSize = 17.sp, textAlign = TextAlign.Center)
+                Text(
+                    listOfNotNull(if (f.pinned) "Phone locked to Voxban" else null, if (f.dnd) "Do Not Disturb on" else null).joinToString(" · ").ifBlank { "Stay with it" },
+                    color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            // Hold to give up (always visible, responsive width).
+            Box(
+                Modifier.padding(bottom = 8.dp).height(52.dp).fillMaxWidth(0.75f).widthIn(min = 200.dp, max = 260.dp).clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown()
+                            val job = scope.launch { hold.animateTo(1f, tween(3000)); vm.endFocus(completed = false) }
+                            waitForUpOrCancellation()
+                            job.cancel()
+                            scope.launch { hold.animateTo(0f, tween(250)) }
+                        }
+                    },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(hold.value).background(Color(0xFFF28B82).copy(alpha = 0.45f)))
+                Text("Hold 3 s to give up", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.align(Alignment.Center))
+            }
         }
     }
 }

@@ -136,7 +136,7 @@ fun LegendRow(color: Color, label: String, value: String) {
     val c = VK.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Dot(color, 9.dp)
-        Text(label, fontSize = 12.sp, color = c.inkSecondary, modifier = Modifier.weight(1f), maxLines = 1)
-        Text(value, fontSize = 12.sp, color = c.ink, fontWeight = FontWeight.Medium)
+        Text(label, fontSize = 12.sp, color = c.inkSecondary, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(value, fontSize = 12.sp, color = c.ink, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
     }
 }

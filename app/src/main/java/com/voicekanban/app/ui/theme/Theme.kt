@@ -128,6 +128,7 @@ val LocalAppColors = staticCompositionLocalOf { LightColors }
 
 object VK {
     val colors: AppColors @Composable get() = LocalAppColors.current
+    val responsive: ResponsiveMetrics @Composable get() = LocalResponsive.current
 }
 
 @OptIn(ExperimentalTextApi::class)
@@ -162,7 +163,8 @@ fun VoiceKanbanTheme(mode: ThemeMode, content: @Composable () -> Unit) {
         )
     }
     val scheme = common(if (dark) darkColorScheme() else lightColorScheme())
-    CompositionLocalProvider(LocalAppColors provides c) {
+    val responsive = rememberResponsiveMetrics()
+    CompositionLocalProvider(LocalAppColors provides c, LocalResponsive provides responsive) {
         MaterialTheme(
             colorScheme = scheme,
             typography = AppTypography,

@@ -27,6 +27,7 @@ data class World(
     val transactions: List<com.voicekanban.app.data.Transaction> = emptyList(),
     val budgets: List<com.voicekanban.app.data.Budget> = emptyList(),
     val currency: String = "",
+    val calendarReminders: List<com.voicekanban.app.data.CalendarReminder> = emptyList(),
 )
 
 data class AssistantResult(
@@ -216,6 +217,12 @@ object Assistant {
             "Budgets: $budgets\nRecent transactions:\n$recent"
     }
 
+    private fun remindersContext(reminders: List<com.voicekanban.app.data.CalendarReminder>): String =
+        if (reminders.isEmpty()) "(no calendar reminders)"
+        else reminders.filterNot { it.done }.sortedBy { it.at }.take(25).joinToString("\n") { r ->
+            "  - \"${r.title}\" at ${DateParser.iso(r.at)}" + (if (r.repeat != com.voicekanban.app.data.ReminderRepeat.NONE) " (${r.repeat.label})" else "") + (if (r.notes.isNotBlank()) " · ${r.notes.take(60)}" else "")
+        }.ifBlank { "(all calendar reminders done)" }
+
     private fun vaultContext(vault: List<PasswordEntry>): String =
         if (vault.isEmpty()) "(vault is empty)"
         else vault.take(60).joinToString("\n") { e -> "  - \"${e.title}\"" + listOfNotNull(e.username.ifBlank { null }?.let { "user $it" }, e.url.ifBlank { null }).joinToString(", ", " (", ")").takeIf { e.username.isNotBlank() || e.url.isNotBlank() }.orEmpty() }
@@ -263,11 +270,18 @@ Money manager actions (amounts are plain numbers in the user's currency; "date" 
 {"action":"delete_transaction","transaction":"<id in [brackets] or description>"}
 {"action":"set_budget","category":"Food","limit":5000}  (limit 0 removes it)
 
+Calendar reminder actions (shown ONLY in the Calendar — NOT added to Kanban boards; use when the user asks for a reminder rather than a board task):
+{"action":"add_reminder","title":"...","when":"<ISO date-time>","notes":"<optional>","repeat":"none|daily|weekly|monthly"}
+{"action":"delete_reminder","reminder":"<existing reminder title>"}
+
 Dates: now is ${DateParser.iso(System.currentTimeMillis())} (${java.time.LocalDate.now().dayOfWeek}). Use ISO local date-times like 2026-11-28T17:00 for "due"; default time 17:00.
 ${if (compact) "" else "Keep replies short enough to read aloud."}
 
 Boards:
 ${context(ws, compact)}
+
+Calendar reminders (calendar-only):
+${remindersContext(world.calendarReminders)}
 
 Notes:
 ${notesContext(world.notes, compact)}
@@ -314,7 +328,7 @@ ${moneyContext(world)}
     suspend fun run(context: Context, input: String, history: List<Turn>, world: World, settings: Settings, apiKey: String): AssistantResult {
         val ws = world.workspace
         val turns = normalize(history.takeLast(24) + Turn(true, input))
-        fun apply(actions: List<Action>) = Dispatcher.apply(actions, ws, world.notes, world.vault, world.transactions, world.budgets, world.currency)
+        fun apply(actions: List<Action>) = Dispatcher.apply(actions, ws, world.notes, world.vault, world.transactions, world.budgets, world.currency, world.calendarReminders)
         val noChange = Outcome(ws, emptyList(), emptyList())
 
         when (settings.engine) {
@@ -352,7 +366,7 @@ ${moneyContext(world)}
     /** Board-screen typed commands: same engines, but only actions matter. */
     suspend fun runCommand(context: Context, input: String, world: World, settings: Settings, apiKey: String): AssistantResult {
         val parsed = CommandParser.parse(input, world.workspace.activeBoard)
-        val rulesOutcome = Dispatcher.apply(parsed, world.workspace, world.notes, world.vault, world.transactions, world.budgets, world.currency)
+        val rulesOutcome = Dispatcher.apply(parsed, world.workspace, world.notes, world.vault, world.transactions, world.budgets, world.currency, world.calendarReminders)
         // Rules handle clear commands instantly; use AI for anything they can't parse.
         if (rulesOutcome.mutated) return AssistantResult(rulesOutcome.changes.joinToString("\n"), rulesOutcome, "Quick command")
         return run(context, input, emptyList(), world, settings, apiKey)

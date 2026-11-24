@@ -11,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -113,10 +114,11 @@ fun NotesScreen(vm: MainViewModel) {
             AnimatedVisibility(searching) { InputField(query, { query = it }, "Search notes", leading = Icons.Rounded.Search) }
         }
 
+        val r = VK.responsive
         LazyVerticalStaggeredGrid(
-            StaggeredGridCells.Fixed(2),
+            StaggeredGridCells.Adaptive(minSize = 156.dp),
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = r.gutter, end = r.gutter, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalItemSpacing = 12.dp,
         ) {
@@ -241,8 +243,12 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
                 NoteButton(if (editing) Icons.Rounded.Visibility else Icons.Rounded.Edit, if (editing) "Preview" else "Edit") { if (editing) save(); editing = !editing }
                 NoteButton(Icons.Rounded.DeleteOutline, "Delete note") { vm.deleteNote(note.id); onClose() }
             }
-            // Page colour
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Page colour (horizontally scrollable on narrow screens so all 8 colours remain accessible)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 NOTE_COLORS.forEach { (_, col) ->
                     val sel = note.color == col
                     Box(

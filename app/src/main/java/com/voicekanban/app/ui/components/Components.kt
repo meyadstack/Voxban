@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,7 +57,7 @@ fun PriorityPill(priority: Priority, modifier: Modifier = Modifier, onClick: (()
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Icon(icon, null, tint = c.priorityFg(priority), modifier = Modifier.size(11.dp))
-        Text(priority.label, color = c.priorityFg(priority), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(priority.label, color = c.priorityFg(priority), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
@@ -79,7 +80,8 @@ fun DueChip(dueAt: Long, done: Boolean, modifier: Modifier = Modifier) {
         Icon(Icons.Rounded.Schedule, null, tint = fg, modifier = Modifier.size(11.dp))
         Text(
             if (!done && dueAt < now) "Overdue · ${DateParser.label(dueAt)}" else DateParser.label(dueAt),
-            color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
@@ -87,6 +89,7 @@ fun DueChip(dueAt: Long, done: Boolean, modifier: Modifier = Modifier) {
 @Composable
 fun Chip(text: String, modifier: Modifier = Modifier, selected: Boolean = false, tint: Color? = null, icon: ImageVector? = null, onClick: () -> Unit) {
     val c = VK.colors
+    val compact = VK.responsive.isCompactWidth
     val bgColor = when {
         selected && tint != null -> tint
         selected -> c.raised
@@ -102,12 +105,20 @@ fun Chip(text: String, modifier: Modifier = Modifier, selected: Boolean = false,
             .background(bgColor)
             .border(1.dp, if (selected) (tint ?: c.buttonBorder) else c.buttonBorder, CircleShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp).height(36.dp),
+            .padding(horizontal = if (compact) 11.dp else 14.dp, vertical = 6.dp)
+            .heightIn(min = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
     ) {
         if (icon != null) Icon(icon, null, tint = if (selected) fgColor else (tint ?: c.inkSecondary), modifier = Modifier.size(14.dp))
-        Text(text, color = fgColor, style = MaterialTheme.typography.labelMedium)
+        Text(
+            text,
+            color = fgColor,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
     }
 }
 

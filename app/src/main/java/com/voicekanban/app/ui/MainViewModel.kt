@@ -45,6 +45,7 @@ enum class Section { HOME, BOARD, ASSISTANT, WORKOUT, NOTES, MONEY, VAULT, FOCUS
 data class Snapshot(
     val workspace: Workspace, val notes: List<Note>, val vault: List<PasswordEntry>,
     val transactions: List<com.voicekanban.app.data.Transaction> = emptyList(), val budgets: List<com.voicekanban.app.data.Budget> = emptyList(),
+    val calendarReminders: List<com.voicekanban.app.data.CalendarReminder> = emptyList(),
 )
 enum class ToastKind { SUCCESS, ERROR, INFO }
 
@@ -82,6 +83,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _composing = MutableStateFlow(false)
     /** A note is being written by the AI. */
     val composing = _composing.asStateFlow()
+    /** Non-null when a notification or action requested opening the calendar sheet on a date. */
+    private val _openCalendarDate = MutableStateFlow<java.time.LocalDate?>(null)
+    val openCalendarDate = _openCalendarDate.asStateFlow()
+    fun requestOpenCalendar(date: java.time.LocalDate = java.time.LocalDate.now()) { _openCalendarDate.value = date }
+    fun clearOpenCalendar() { _openCalendarDate.value = null }
+
+    /** True when a deep link or screen requested opening the Help & Support ticket sheet. */
+    private val _openSupport = MutableStateFlow(false)
+    val openSupport = _openSupport.asStateFlow()
+    fun requestOpenSupport() { _openSupport.value = true }
+    fun clearOpenSupport() { _openSupport.value = false }
 
     /** App-lock state lives here so rotation / theme changes don't re-lock. */
     val locked = MutableStateFlow(state.value.settings.biometricLock)
@@ -122,9 +134,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             host.startsWith("money") -> _section.value = Section.MONEY
             host.startsWith("home") -> _section.value = Section.HOME
             host.startsWith("focus") -> _section.value = Section.FOCUS
+            host.startsWith("support") -> _openSupport.value = true
             host.startsWith("workout") -> {
                 _section.value = Section.WORKOUT
                 uri.getQueryParameter("start")?.let { id -> state.value.types.firstOrNull { it.id == id }?.let { _pendingWorkout.value = it } }
+            }
+            host.startsWith("calendar") -> {
+                _section.value = Section.BOARD
+                val date = uri.getQueryParameter("date")?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() } ?: java.time.LocalDate.now()
+                _openCalendarDate.value = date
             }
             host.startsWith("card") -> {
                 _section.value = Section.BOARD
@@ -284,13 +302,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun keyFor(engine: Engine) = repo.key(engine)
 
     val currency: String get() = com.voicekanban.app.data.currencySymbol(state.value.settings.currency)
-    private fun world() = World(ws, state.value.notes, repo.vault.value, state.value.transactions, state.value.budgets, currency)
-    private fun snapshot() = Snapshot(ws, state.value.notes, repo.vault.value, state.value.transactions, state.value.budgets)
+    private fun world() = World(ws, state.value.notes, repo.vault.value, state.value.transactions, state.value.budgets, currency, state.value.calendarReminders)
+    private fun snapshot() = Snapshot(ws, state.value.notes, repo.vault.value, state.value.transactions, state.value.budgets, state.value.calendarReminders)
 
-    /** Applies an assistant outcome to boards, notes and vault. */
+    /** Applies an assistant outcome to boards, notes, vault, money and calendar reminders. */
     private fun applyOutcome(out: com.voicekanban.app.ai.Outcome) {
         if (out.mutated) {
-            repo.update { st -> st.copy(workspace = out.workspace, notes = out.notes ?: st.notes, transactions = out.transactions ?: st.transactions, budgets = out.budgets ?: st.budgets) }
+            repo.update { st ->
+                st.copy(
+                    workspace = out.workspace,
+                    notes = out.notes ?: st.notes,
+                    transactions = out.transactions ?: st.transactions,
+                    budgets = out.budgets ?: st.budgets,
+                    calendarReminders = out.calendarReminders ?: st.calendarReminders,
+                )
+            }
             out.vault?.let { v -> repo.updateVault { v } }
         }
         out.showPasswordId?.let { id -> _focusVaultId.value = id; _section.value = Section.VAULT }
@@ -405,7 +431,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun undoChat(messageId: String) {
         val snap = _undoable.value[messageId] ?: return
-        repo.update { it.copy(workspace = snap.workspace, notes = snap.notes, transactions = snap.transactions, budgets = snap.budgets) }
+        repo.update { it.copy(workspace = snap.workspace, notes = snap.notes, transactions = snap.transactions, budgets = snap.budgets, calendarReminders = snap.calendarReminders) }
         repo.updateVault { snap.vault }
         _undoable.value = _undoable.value - messageId
         val fromVoice = state.value.voiceChat.any { it.id == messageId }
@@ -548,6 +574,93 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun scheduleCard(cardId: String, dueAt: Long?, remindBeforeMin: Int?) {
         val name = findCard(cardId)?.text ?: return
         commit(if (dueAt == null) "Removed the date from “$name”" else "“$name” · due ${DateParser.label(dueAt)}", transform = mapBoard { b -> b.mapCard(cardId) { it.copy(dueAt = dueAt, remindBeforeMin = remindBeforeMin) } })
+    }
+
+    /** Adds a standalone calendar reminder — shown in the Calendar ONLY, never on the Kanban board. */
+    fun addCalendarReminder(
+        title: String,
+        at: Long,
+        remindBeforeMin: Int = 0,
+        notes: String = "",
+        repeat: com.voicekanban.app.data.ReminderRepeat = com.voicekanban.app.data.ReminderRepeat.NONE,
+    ) {
+        val t = title.trim(); if (t.isEmpty()) return
+        val rem = com.voicekanban.app.data.CalendarReminder(
+            id = newId("rem"), title = t, notes = notes.trim(), at = at,
+            remindBeforeMin = remindBeforeMin, repeat = repeat,
+        )
+        repo.update { st -> st.copy(calendarReminders = listOf(rem) + st.calendarReminders) }
+        showToast(ToastKind.SUCCESS, "Reminder set · ${DateParser.label(at)}", t)
+    }
+
+    fun saveCalendarReminder(rem: com.voicekanban.app.data.CalendarReminder) {
+        val t = rem.title.trim(); if (t.isEmpty()) return
+        val clean = rem.copy(title = t, notes = rem.notes.trim())
+        repo.update { st ->
+            st.copy(calendarReminders = if (st.calendarReminders.any { it.id == clean.id }) st.calendarReminders.map { if (it.id == clean.id) clean else it } else listOf(clean) + st.calendarReminders)
+        }
+        showToast(ToastKind.SUCCESS, "Reminder updated", clean.title)
+    }
+
+    fun toggleCalendarReminderDone(id: String) {
+        repo.update { st ->
+            st.copy(calendarReminders = st.calendarReminders.map { r ->
+                if (r.id != id) r
+                else if (!r.done && r.repeat != com.voicekanban.app.data.ReminderRepeat.NONE) r.advanceAfter()
+                else r.copy(done = !r.done)
+            })
+        }
+    }
+
+    fun deleteCalendarReminder(id: String) {
+        val r = state.value.calendarReminders.firstOrNull { it.id == id } ?: return
+        repo.update { st -> st.copy(calendarReminders = st.calendarReminders.filterNot { it.id == id }) }
+        com.voicekanban.app.reminders.Reminders.dismissCalendar(getApplication(), id)
+        showToast(ToastKind.INFO, "Deleted reminder “${r.title}”")
+    }
+
+    // ------------------------------------------------------------ support tickets
+
+    fun saveSupportTicket(ticket: com.voicekanban.app.data.SupportTicket) {
+        val now = System.currentTimeMillis()
+        val stamped = ticket.copy(updatedAt = now)
+        repo.update { st ->
+            val exists = st.supportTickets.any { it.id == stamped.id }
+            val next = if (exists) {
+                st.supportTickets.map { if (it.id == stamped.id) stamped else it }
+            } else {
+                listOf(stamped) + st.supportTickets
+            }
+            st.copy(supportTickets = next.sortedByDescending { it.updatedAt })
+        }
+    }
+
+    fun setSupportTicketStatus(id: String, status: com.voicekanban.app.data.SupportTicketStatus) {
+        repo.update { st ->
+            st.copy(
+                supportTickets = st.supportTickets.map { t ->
+                    if (t.id == id) t.copy(status = status, updatedAt = System.currentTimeMillis()) else t
+                },
+            )
+        }
+    }
+
+    fun deleteSupportTicket(id: String) {
+        val t = state.value.supportTickets.firstOrNull { it.id == id } ?: return
+        repo.update { st -> st.copy(supportTickets = st.supportTickets.filterNot { it.id == id }) }
+        showToast(ToastKind.INFO, "Deleted ticket #${t.id}")
+    }
+
+    // ------------------------------------------------------------ workout music favourites
+
+    fun toggleFavoriteTrack(track: com.voicekanban.app.data.WorkoutTrack) {
+        val exists = state.value.savedWorkoutTracks.any { it.videoId == track.videoId }
+        repo.update { st ->
+            val next = if (exists) st.savedWorkoutTracks.filterNot { it.videoId == track.videoId }
+            else listOf(track) + st.savedWorkoutTracks.filterNot { it.videoId == track.videoId }
+            st.copy(savedWorkoutTracks = next)
+        }
+        showToast(ToastKind.INFO, if (exists) "Removed from workout favourites" else "Saved to workout favourites", track.title)
     }
 
     // ------------------------------------------------------------ backup

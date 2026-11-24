@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voicekanban.app.ui.theme.VK
 
-/** Shared top bar so every tab lines up: 44 dp buttons, centred title, 18 dp gutters. */
+/** Shared responsive top bar so every tab lines up cleanly across phone widths and font scales. */
 @Composable
 fun ScreenHeader(
     title: String,
@@ -34,27 +34,44 @@ fun ScreenHeader(
     below: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val c = VK.colors
-    Column(Modifier.fillMaxWidth().background(c.background).statusBarsPadding().padding(horizontal = 18.dp).padding(top = 8.dp, bottom = 10.dp)) {
-        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(48.dp), contentAlignment = Alignment.CenterStart) { leading() }
+    val r = VK.responsive
+    val topPad = if (r.isCompactHeight) 4.dp else 8.dp
+    val bottomPad = if (r.isCompactHeight) 6.dp else 10.dp
+    Column(
+        Modifier.fillMaxWidth().background(c.background).statusBarsPadding()
+            .padding(horizontal = r.headerGutter).padding(top = topPad, bottom = bottomPad),
+    ) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 46.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.widthIn(min = 44.dp), contentAlignment = Alignment.CenterStart) { leading() }
             Column(
-                Modifier.weight(1f).let { if (onTitle != null) it.clip(CircleShape).clickable(onClick = onTitle) else it },
+                Modifier.weight(1f).padding(horizontal = 6.dp)
+                    .let { if (onTitle != null) it.clip(CircleShape).clickable(onClick = onTitle) else it },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitle?.let { Text(it, fontSize = 11.sp, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontSize = if (r.isCompactWidth) 18.sp else 21.sp,
+                    color = c.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                subtitle?.let {
+                    Text(it, fontSize = 11.sp, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Box(Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) { trailing() }
+            Box(Modifier.widthIn(min = 44.dp), contentAlignment = Alignment.CenterEnd) { trailing() }
         }
-        below?.let { Column(Modifier.padding(top = 12.dp), content = it) }
+        below?.let { Column(Modifier.padding(top = if (r.isCompactHeight) 8.dp else 12.dp), content = it) }
     }
 }
 
 @Composable
 fun HeaderButton(icon: ImageVector, label: String, active: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     val c = VK.colors
+    val sz = if (VK.responsive.isCompactWidth) 40.dp else 44.dp
     Box(
-        Modifier.size(44.dp).clip(CircleShape)
+        Modifier.size(sz).clip(CircleShape)
             .background(if (active) c.limeTile else c.raised)
             .border(1.dp, if (active) Color.Transparent else c.buttonBorder, CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
@@ -65,16 +82,26 @@ fun HeaderButton(icon: ImageVector, label: String, active: Boolean = false, enab
 @Composable
 fun Pill(label: String, active: Boolean, modifier: Modifier = Modifier, icon: ImageVector? = null, onClick: () -> Unit) {
     val c = VK.colors
+    val r = VK.responsive
     val bg by animateColorAsState(if (active) c.raised else Color.Transparent, tween(200), label = "pillBg")
     Row(
-        modifier.height(38.dp).clip(CircleShape).background(bg)
+        modifier.heightIn(min = 38.dp).clip(CircleShape).background(bg)
             .border(1.dp, c.buttonBorder, CircleShape)
-            .clickable(onClick = onClick).padding(horizontal = 16.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (r.isCompactWidth) 10.dp else 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        if (icon != null) { Icon(icon, null, tint = c.ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
-        Text(label, fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal, color = c.ink, maxLines = 1)
+        if (icon != null) { Icon(icon, null, tint = c.ink, modifier = Modifier.size(15.dp)); Spacer(Modifier.width(5.dp)) }
+        Text(
+            label,
+            fontSize = if (r.isCompactWidth) 12.sp else 13.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            color = c.ink,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

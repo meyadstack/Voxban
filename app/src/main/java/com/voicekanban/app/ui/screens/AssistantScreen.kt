@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -265,8 +267,9 @@ private fun VoicePane(
         AvatarMood.SPEAKING -> "Speaking"
     }
 
-    Box(
-        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)
+    val r = VK.responsive
+    BoxWithConstraints(
+        Modifier.fillMaxSize().padding(horizontal = r.gutter, vertical = 8.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(
                 Brush.verticalGradient(
@@ -280,28 +283,42 @@ private fun VoicePane(
             )
             .border(1.dp, c.border, RoundedCornerShape(32.dp)),
     ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        val landscapeSplit = maxWidth > maxHeight && maxHeight < 500.dp
+        val avatarSize = if (landscapeSplit) {
+            minOf(maxHeight * 0.76f, maxWidth * 0.38f, 240.dp).coerceAtLeast(110.dp)
+        } else {
+            minOf(maxWidth * 0.64f, maxHeight * 0.40f, 300.dp).coerceAtLeast(110.dp)
+        }
+
+        val voiceBadge: @Composable () -> Unit = {
             Row(
                 Modifier.clip(CircleShape).background(c.raised.copy(alpha = 0.85f)).border(1.dp, c.border, CircleShape)
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.GraphicEq, null, tint = c.accentText, modifier = Modifier.size(15.dp))
                 Text("  $voiceLabel", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-
-            Spacer(Modifier.weight(0.4f))
-
+        }
+        val avatarView: @Composable () -> Unit = {
             AiAvatar(
                 mood = mood,
                 level = if (mood == AvatarMood.SPEAKING) outLevel else micLevel,
                 interactive = true,
                 onTap = onTalk,
-                modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f)
+                modifier = Modifier.size(avatarSize)
                     .semantics { contentDescription = "Voice assistant: $label. Tap to ${if (mood == AvatarMood.IDLE) "talk" else "stop"}." },
             )
-
-            Text(label, style = MaterialTheme.typography.titleLarge, color = c.ink, textAlign = TextAlign.Center)
+        }
+        val statusAndControls: @Composable ColumnScope.() -> Unit = {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleLarge,
+                fontSize = if (landscapeSplit) 20.sp else if (r.isCompactWidth) 22.sp else 26.sp,
+                lineHeight = if (landscapeSplit) 24.sp else 30.sp,
+                color = c.ink,
+                textAlign = TextAlign.Center,
+            )
             Text(
                 when (mood) {
                     AvatarMood.IDLE -> "Ask anything, or tell me to add, change or delete tasks, notes and logins. Drag across me — I’ll watch your finger."
@@ -310,17 +327,19 @@ private fun VoicePane(
                     AvatarMood.SPEAKING -> "Tap me to interrupt and speak."
                 },
                 style = MaterialTheme.typography.bodySmall, color = c.inkSecondary, textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp).widthIn(max = 320.dp),
+                maxLines = if (landscapeSplit) 2 else Int.MAX_VALUE,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = if (landscapeSplit) 4.dp else 6.dp).widthIn(max = 340.dp),
             )
 
             AnimatedVisibility(mood == AvatarMood.IDLE && last != null) {
                 Row(
-                    Modifier.padding(top = 16.dp).clip(CircleShape)
+                    Modifier.padding(top = if (landscapeSplit) 8.dp else 12.dp).clip(CircleShape)
                         .background(if (last?.isError == true) c.dangerSoft else c.raised)
                         .border(1.dp, if (last?.isError == true) c.danger else c.border, CircleShape)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = if (landscapeSplit) 6.dp else 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     when {
                         last?.isError == true -> {
@@ -344,26 +363,57 @@ private fun VoicePane(
                 }
             }
 
-            Spacer(Modifier.weight(0.6f))
+            Spacer(Modifier.height(if (landscapeSplit) 8.dp else 14.dp))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(bottom = if (landscapeSplit) 4.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                 Row(
-                    Modifier.height(52.dp).clip(CircleShape)
+                    Modifier.heightIn(min = if (landscapeSplit) 44.dp else 50.dp).clip(CircleShape)
                         .background(Brush.horizontalGradient(listOf(c.voicePrimary, c.voiceSecondary)))
-                        .clickable(onClick = onTalk).padding(horizontal = 24.dp),
+                        .clickable(onClick = onTalk).padding(horizontal = if (r.isCompactWidth) 18.dp else 22.dp, vertical = if (landscapeSplit) 9.dp else 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(if (mood == AvatarMood.LISTENING) Icons.Rounded.Stop else Icons.Rounded.Mic, null, tint = c.onLime, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when (mood) { AvatarMood.LISTENING -> "Done speaking"; AvatarMood.SPEAKING -> "Interrupt & talk"; else -> "Start talking" },
-                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = c.onLime,
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = c.onLime, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape).clickable(onClick = onChat),
+                    Modifier.size(if (landscapeSplit) 44.dp else 50.dp).clip(CircleShape).background(c.raised).border(1.dp, c.buttonBorder, CircleShape).clickable(onClick = onChat),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.Forum, "Open chat", tint = c.ink, modifier = Modifier.size(20.dp)) }
+            }
+        }
+
+        if (landscapeSplit) {
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Box(Modifier.weight(0.40f), contentAlignment = Alignment.Center) { avatarView() }
+                Column(
+                    Modifier.weight(0.60f).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    voiceBadge()
+                    Spacer(Modifier.height(6.dp))
+                    statusAndControls()
+                }
+            }
+        } else {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                    .padding(horizontal = if (r.isCompactWidth) 14.dp else 20.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                voiceBadge()
+                Spacer(Modifier.height(12.dp))
+                avatarView()
+                Spacer(Modifier.height(8.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { statusAndControls() }
             }
         }
     }
@@ -449,10 +499,12 @@ private fun ChatPane(
 private fun Bubble(m: ChatMessage, canUndo: Boolean, onUndo: () -> Unit) {
     val c = VK.colors
     val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = if (m.fromUser) 22.dp else 6.dp, bottomEnd = if (m.fromUser) 6.dp else 22.dp)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
-        if (!m.fromUser) { AiAvatar(if (m.isError) AvatarMood.THINKING else AvatarMood.IDLE, Modifier.size(34.dp), halo = false); Spacer(Modifier.width(8.dp)) }
-        Column(
-            Modifier.widthIn(max = 310.dp).clip(shape)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val maxBubbleW = (maxWidth * if (m.fromUser) 0.84f else 0.78f).coerceAtMost(480.dp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+            if (!m.fromUser) { AiAvatar(if (m.isError) AvatarMood.THINKING else AvatarMood.IDLE, Modifier.size(34.dp), halo = false); Spacer(Modifier.width(8.dp)) }
+            Column(
+                Modifier.widthIn(max = maxBubbleW).clip(shape)
                 .background(if (m.fromUser) c.limeTile else if (m.isError) c.dangerSoft else c.raised)
                 .border(1.dp, if (m.isError) c.danger else if (m.fromUser) Color.Transparent else c.border, shape)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -479,10 +531,11 @@ private fun Bubble(m: ChatMessage, canUndo: Boolean, onUndo: () -> Unit) {
                     listOfNotNull(m.engine?.uppercase(), DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(m.createdAt))).joinToString(" · "),
                     fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = c.inkTertiary, modifier = Modifier.weight(1f, fill = false),
                 )
-                if (canUndo) {
-                    Spacer(Modifier.width(10.dp))
-                    Row(Modifier.clip(CircleShape).clickable(onClick = onUndo).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Undo, null, tint = c.accentText, modifier = Modifier.size(13.dp)); Text(" Undo", fontSize = 12.sp, color = c.accentText, fontWeight = FontWeight.Bold)
+                    if (canUndo) {
+                        Spacer(Modifier.width(10.dp))
+                        Row(Modifier.clip(CircleShape).clickable(onClick = onUndo).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Undo, null, tint = c.accentText, modifier = Modifier.size(13.dp)); Text(" Undo", fontSize = 12.sp, color = c.accentText, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
