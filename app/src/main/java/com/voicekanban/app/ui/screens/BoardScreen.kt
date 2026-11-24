@@ -135,7 +135,12 @@ private fun clockTime(ts: Long): String =
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun BoardScreen(vm: MainViewModel, onOpenUpdateSheet: () -> Unit = {}, onOpenSupport: () -> Unit = {}) {
+fun BoardScreen(
+    vm: MainViewModel,
+    onOpenUpdateSheet: () -> Unit = {},
+    onOpenSupport: () -> Unit = {},
+    onOpenPairDesktop: () -> Unit = {},
+) {
     val app by vm.state.collectAsState()
     val board = app.workspace.activeBoard
     val highlight by vm.highlight.collectAsState()
@@ -444,6 +449,7 @@ fun BoardScreen(vm: MainViewModel, onOpenUpdateSheet: () -> Unit = {}, onOpenSup
         onDismiss = { settingsOpen = false },
         onOpenUpdateSheet = { settingsOpen = false; onOpenUpdateSheet() },
         onOpenSupport = { settingsOpen = false; onOpenSupport() },
+        onOpenPairDesktop = { settingsOpen = false; onOpenPairDesktop() },
     )
     if (calendarOpen) CalendarSheet(vm, board, initialDate = calendarInitialDate, onDismiss = { calendarOpen = false })
     if (helpOpen) HelpSheet(onDismiss = { helpOpen = false }, onTry = { helpOpen = false; vm.openAssistant(false); vm.sendChat(it) })
@@ -508,7 +514,11 @@ fun InputField(value: String, onValue: (String) -> Unit, placeholder: String, mo
         leadingIcon = leading?.let { { Icon(it, null, tint = c.inkTertiary) } },
         singleLine = singleLine,
         shape = RoundedCornerShape(18.dp),
-        keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) androidx.compose.ui.text.input.ImeAction.Done else androidx.compose.ui.text.input.ImeAction.Default),
+        keyboardOptions = KeyboardOptions(
+            imeAction = if (!singleLine) androidx.compose.ui.text.input.ImeAction.Default
+            else if (onDone != null) androidx.compose.ui.text.input.ImeAction.Done
+            else androidx.compose.ui.text.input.ImeAction.Default,
+        ),
         keyboardActions = KeyboardActions(onDone = { onDone?.invoke() }),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = c.surfaceWell, unfocusedContainerColor = c.surfaceWell,

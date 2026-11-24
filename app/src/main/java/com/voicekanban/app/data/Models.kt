@@ -244,6 +244,8 @@ data class Settings(
     val autoCheckUpdates: Boolean = true,
     /** Release tag the user chose to skip ("Later"). */
     val dismissedUpdateTag: String = "",
+    /** Paired Voxban Windows PC desktop app for LAN sync. */
+    val pairedDesktop: PairedDesktop? = null,
 ) {
     val appLanguage: AppLanguage get() = AppLanguage.byCode(language)
 
@@ -251,6 +253,15 @@ data class Settings(
     fun voiceFor(lang: AppLanguage = appLanguage): VoiceChoice? =
         voiceByLanguage[lang.code] ?: if (lang == AppLanguage.EN && voiceId.isNotBlank()) VoiceChoice(voiceId, voiceName) else null
 }
+
+@Serializable
+data class PairedDesktop(
+    val host: String,
+    val port: Int = 43821,
+    val token: String,
+    val pcName: String = "Voxban PC",
+    val lastSyncedAt: Long = 0L,
+)
 
 @Serializable
 data class VoiceChoice(
@@ -449,6 +460,16 @@ data class ActiveFocus(
     val previousFilter: Int = 1,
 )
 
+@Serializable
+data class DownloadedTrack(
+    val track: WorkoutTrack,
+    val localPath: String,
+    val mimeType: String = "audio/webm",
+    val sizeBytes: Long = 0L,
+    val downloadedAt: Long = System.currentTimeMillis(),
+    val exportedToMusicFolder: Boolean = false,
+)
+
 // ---------------------------------------------------------------- support tickets
 
 @Serializable
@@ -513,6 +534,8 @@ data class AppState(
     val calendarReminders: List<CalendarReminder> = emptyList(),
     /** Saved favourite tracks for the workout music player. */
     val savedWorkoutTracks: List<WorkoutTrack> = emptyList(),
+    /** Offline downloaded workout music tracks stored on device. */
+    val downloadedWorkoutTracks: List<DownloadedTrack> = emptyList(),
     /** Support tickets created by the user and mailed to support. */
     val supportTickets: List<SupportTicket> = emptyList(),
 ) {

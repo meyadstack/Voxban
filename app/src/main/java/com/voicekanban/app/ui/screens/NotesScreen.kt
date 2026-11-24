@@ -1,6 +1,9 @@
 package com.voicekanban.app.ui.screens
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,14 +23,19 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
@@ -53,6 +61,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -163,6 +172,8 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, composing: Boolea
         TextField(
             draft, onDraft, Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 88.dp),
             placeholder = { Text("e.g. groceries milk eggs, dentist thu 4pm, idea: weekend trip to the hills, call mom", color = c.inkTertiary, fontSize = 14.sp) },
+            singleLine = false,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
             shape = RoundedCornerShape(18.dp), enabled = !composing,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = c.surfaceWell, unfocusedContainerColor = c.surfaceWell, disabledContainerColor = c.surfaceWell,
@@ -218,6 +229,13 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
     var body by remember(note.id) { mutableStateOf(note.body) }
     var editing by remember(note.id) { mutableStateOf(note.body.isBlank()) }
     var addMore by remember(note.id) { mutableStateOf("") }
+    var copied by remember(note.id) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(1800)
+            copied = false
+        }
+    }
     // AI rewrites land in the saved note; refresh local copies.
     LaunchedEffect(note.updatedAt) { if (!editing) { title = note.title; body = note.body } }
 
@@ -239,6 +257,13 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NoteButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onClick = ::close)
                 Spacer(Modifier.weight(1f))
+                NoteButton(if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, if (copied) "Copied" else "Copy note") {
+                    val fullText = listOf(title.trim(), body.trim()).filter { it.isNotEmpty() }.joinToString("\n\n")
+                    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText(title.ifBlank { "Note" }, fullText))
+                    copied = true
+                    vm.showToast(com.voicekanban.app.ui.ToastKind.INFO, "Note copied")
+                }
                 NoteButton(if (note.pinned) Icons.Rounded.PushPin else Icons.Outlined.PushPin, if (note.pinned) "Unpin" else "Pin") { save(); vm.toggleNotePin(note.id) }
                 NoteButton(if (editing) Icons.Rounded.Visibility else Icons.Rounded.Edit, if (editing) "Preview" else "Edit") { if (editing) save(); editing = !editing }
                 NoteButton(Icons.Rounded.DeleteOutline, "Delete note") { vm.deleteNote(note.id); onClose() }
@@ -263,16 +288,22 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
                     PlainField(title, { title = it }, "Title", big = true)
                     PlainField(body, { body = it }, "Write freely — # heading, - bullet, - [ ] to-do, **bold**", big = false)
                 } else {
-                    Text(title, color = NOTE_INK, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 4.dp))
-                    Text("Edited ${relativeTime(note.updatedAt)}", color = NOTE_INK_SOFT, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        body.lines().forEachIndexed { i, line ->
-                            NoteLine(line, compact = false, onToggle = {
-                                val lines = body.lines().toMutableList()
-                                lines[i] = if (line.trimStart().startsWith("- [ ]")) line.replaceFirst("- [ ]", "- [x]") else line.replaceFirst(Regex("""- \[[xX]]"""), "- [ ]")
-                                body = lines.joinToString("\n")
-                                vm.saveNote(note.copy(title = title, body = body))
-                            })
+                    SelectionContainer {
+                        Column {
+                            Text(title, color = NOTE_INK, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 4.dp))
+                            DisableSelection {
+                                Text("Edited ${relativeTime(note.updatedAt)} · Long-press text to select & copy", color = NOTE_INK_SOFT, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                body.lines().forEachIndexed { i, line ->
+                                    NoteLine(line, compact = false, onToggle = {
+                                        val lines = body.lines().toMutableList()
+                                        lines[i] = if (line.trimStart().startsWith("- [ ]")) line.replaceFirst("- [ ]", "- [x]") else line.replaceFirst(Regex("""- \[[xX]]"""), "- [ ]")
+                                        body = lines.joinToString("\n")
+                                        vm.saveNote(note.copy(title = title, body = body))
+                                    })
+                                }
+                            }
                         }
                     }
                 }
@@ -293,7 +324,8 @@ private fun NoteEditor(vm: MainViewModel, note: Note, onClose: () -> Unit) {
                 TextField(
                     addMore, { addMore = it }, Modifier.weight(1f),
                     placeholder = { Text(if (voice.listening) "Listening…" else "Add words, or tap ✨ to polish", color = NOTE_INK_SOFT, fontSize = 14.sp) },
-                    maxLines = 3, enabled = !composing,
+                    singleLine = false, maxLines = 4, enabled = !composing,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
@@ -328,6 +360,8 @@ private fun PlainField(value: String, onValue: (String) -> Unit, placeholder: St
         value, onValue, Modifier.fillMaxWidth(),
         placeholder = { Text(placeholder, color = NOTE_INK_SOFT, fontSize = if (big) 26.sp else 16.sp) },
         textStyle = if (big) MaterialTheme.typography.headlineMedium.copy(color = NOTE_INK, fontWeight = FontWeight.SemiBold) else MaterialTheme.typography.bodyLarge.copy(color = NOTE_INK, lineHeight = 24.sp),
+        singleLine = false,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = NOTE_INK,

@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
@@ -117,12 +118,20 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
     var moreOpen by remember { mutableStateOf(false) }
     var updateSheetOpen by remember { mutableStateOf(false) }
     var supportOpen by remember { mutableStateOf(false) }
+    var pairOpen by remember { mutableStateOf(false) }
     val pendingOpenSupport by vm.openSupport.collectAsState()
+    val pendingOpenPair by vm.openPairDesktop.collectAsState()
 
     LaunchedEffect(pendingOpenSupport) {
         if (pendingOpenSupport) {
             supportOpen = true
             vm.clearOpenSupport()
+        }
+    }
+    LaunchedEffect(pendingOpenPair) {
+        if (pendingOpenPair) {
+            pairOpen = true
+            vm.clearOpenPairDesktop()
         }
     }
 
@@ -169,6 +178,7 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
                             vm,
                             onOpenUpdateSheet = { updateSheetOpen = true },
                             onOpenSupport = { supportOpen = true },
+                            onOpenPairDesktop = { pairOpen = true },
                         )
                         Section.ASSISTANT -> AssistantScreen(vm)
                         Section.WORKOUT -> WorkoutScreen(vm)
@@ -198,6 +208,7 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
                 onSelect = { vm.setSection(it) },
                 onSettings = { settingsOpen = true },
                 onSupport = { supportOpen = true },
+                onPairDesktop = { pairOpen = true },
             )
             Box(Modifier.fillMaxHeight().width(1.dp).background(c.border))
             mainContent(Modifier.weight(1f).fillMaxHeight())
@@ -210,15 +221,18 @@ fun AppRoot(vm: MainViewModel, locked: Boolean, onUnlock: () -> Unit) {
         onDismiss = { moreOpen = false },
         onSettings = { moreOpen = false; settingsOpen = true },
         onSupport = { moreOpen = false; supportOpen = true },
+        onPairDesktop = { moreOpen = false; pairOpen = true },
     ) { moreOpen = false; vm.setSection(it) }
     if (settingsOpen) SettingsSheet(
         vm = vm,
         onDismiss = { settingsOpen = false },
         onOpenUpdateSheet = { settingsOpen = false; updateSheetOpen = true },
         onOpenSupport = { settingsOpen = false; supportOpen = true },
+        onOpenPairDesktop = { settingsOpen = false; pairOpen = true },
     )
     if (updateSheetOpen) UpdateSheet(vm, updateState, onDismiss = { updateSheetOpen = false })
     if (supportOpen) SupportSheet(vm, onDismiss = { supportOpen = false })
+    if (pairOpen) DesktopPairSheet(vm, onDismiss = { pairOpen = false })
 }
 
 private val MORE_SECTIONS = listOf(
@@ -236,7 +250,7 @@ private val ALL_NAV_SECTIONS = listOf(
 ) + MORE_SECTIONS
 
 @Composable
-private fun NavRail(section: Section, onSelect: (Section) -> Unit, onSettings: () -> Unit, onSupport: () -> Unit) {
+private fun NavRail(section: Section, onSelect: (Section) -> Unit, onSettings: () -> Unit, onSupport: () -> Unit, onPairDesktop: () -> Unit) {
     val c = VK.colors
     Column(
         Modifier.fillMaxHeight().width(76.dp).background(c.surface)
@@ -268,6 +282,14 @@ private fun NavRail(section: Section, onSelect: (Section) -> Unit, onSettings: (
             }
         }
         Spacer(Modifier.height(6.dp))
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onPairDesktop)
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Rounded.QrCodeScanner, "Pair PC", tint = c.inkSecondary, modifier = Modifier.size(20.dp))
+            Text("Pair PC", fontSize = 10.sp, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        }
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onSupport)
                 .padding(vertical = 8.dp, horizontal = 4.dp),
@@ -339,11 +361,12 @@ private fun TabBar(section: Section, onMore: () -> Unit, onChange: (Section) -> 
 }
 
 @Composable
-private fun MoreSheet(onDismiss: () -> Unit, onSettings: () -> Unit, onSupport: () -> Unit, onPick: (Section) -> Unit) {
+private fun MoreSheet(onDismiss: () -> Unit, onSettings: () -> Unit, onSupport: () -> Unit, onPairDesktop: () -> Unit, onPick: (Section) -> Unit) {
     val c = VK.colors
     val cols = if (VK.responsive.isWideWidth) 3 else 2
     val items = MORE_SECTIONS.map { Triple<String, String, ImageVector>(it.first.name, it.second, it.third) } +
         listOf(
+            Triple("PAIR_PC", "Pair PC", Icons.Rounded.QrCodeScanner),
             Triple("SUPPORT", "Support", Icons.Rounded.SupportAgent),
             Triple("SETTINGS", "Settings", Icons.Rounded.Settings),
         )
@@ -358,6 +381,7 @@ private fun MoreSheet(onDismiss: () -> Unit, onSettings: () -> Unit, onSupport: 
                                 when (key) {
                                     "SETTINGS" -> onSettings()
                                     "SUPPORT" -> onSupport()
+                                    "PAIR_PC" -> onPairDesktop()
                                     else -> onPick(Section.valueOf(key))
                                 }
                             }.padding(14.dp),

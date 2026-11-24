@@ -95,6 +95,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun requestOpenSupport() { _openSupport.value = true }
     fun clearOpenSupport() { _openSupport.value = false }
 
+    /** True when a deep link or action requested opening the Windows PC QR pairing sheet. */
+    private val _openPairDesktop = MutableStateFlow(false)
+    val openPairDesktop = _openPairDesktop.asStateFlow()
+    fun requestOpenPairDesktop() { _openPairDesktop.value = true }
+    fun clearOpenPairDesktop() { _openPairDesktop.value = false }
+
     /** App-lock state lives here so rotation / theme changes don't re-lock. */
     val locked = MutableStateFlow(state.value.settings.biometricLock)
     private var backgroundedAt = 0L
@@ -135,6 +141,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             host.startsWith("home") -> _section.value = Section.HOME
             host.startsWith("focus") -> _section.value = Section.FOCUS
             host.startsWith("support") -> _openSupport.value = true
+            host.startsWith("pair") -> _openPairDesktop.value = true
             host.startsWith("workout") -> {
                 _section.value = Section.WORKOUT
                 uri.getQueryParameter("start")?.let { id -> state.value.types.firstOrNull { it.id == id }?.let { _pendingWorkout.value = it } }
@@ -663,6 +670,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         showToast(ToastKind.INFO, if (exists) "Removed from workout favourites" else "Saved to workout favourites", track.title)
     }
 
+    fun addDownloadedTrack(item: com.voicekanban.app.data.DownloadedTrack) {
+        repo.update { st ->
+            val next = listOf(item) + st.downloadedWorkoutTracks.filterNot { it.track.videoId == item.track.videoId }
+            st.copy(downloadedWorkoutTracks = next)
+        }
+        showToast(
+            ToastKind.SUCCESS,
+            "Downloaded “${item.track.title}”",
+            if (item.exportedToMusicFolder) "Saved for offline playback & Music/Voxban" else "Saved for offline playback",
+        )
+    }
+
+    fun removeDownloadedTrack(videoId: String) {
+        val existing = state.value.downloadedWorkoutTracks.firstOrNull { it.track.videoId == videoId } ?: return
+        com.voicekanban.app.music.MusicDownloadManager.deleteDownload(getApplication(), existing)
+        repo.update { st ->
+            st.copy(downloadedWorkoutTracks = st.downloadedWorkoutTracks.filterNot { it.track.videoId == videoId })
+        }
+        showToast(ToastKind.INFO, "Removed download", existing.track.title)
+    }
+
     // ------------------------------------------------------------ backup
 
     /** Everything as one JSON file; passwords are included only when protected with [passphrase]. */
@@ -721,6 +749,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------ settings
 
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
+
+    /** Stores paired Windows PC credentials and merges synced workspace data while preserving local downloads/keys. */
+    fun applyDesktopSync(desktop: com.voicekanban.app.data.PairedDesktop, remote: AppState?) {
+        repo.update { local ->
+            val merged = if (remote != null) {
+                local.copy(
+                    workspace = if (remote.workspace.boards.isNotEmpty()) remote.workspace else local.workspace,
+                    notes = remote.notes.ifEmpty { local.notes },
+                    transactions = remote.transactions.ifEmpty { local.transactions },
+                    budgets = remote.budgets.ifEmpty { local.budgets },
+                    workouts = remote.workouts.ifEmpty { local.workouts },
+                    focusSessions = remote.focusSessions.ifEmpty { local.focusSessions },
+                    calendarReminders = remote.calendarReminders.ifEmpty { local.calendarReminders },
+                    savedWorkoutTracks = remote.savedWorkoutTracks.ifEmpty { local.savedWorkoutTracks },
+                    supportTickets = remote.supportTickets.ifEmpty { local.supportTickets },
+                    settings = local.settings.copy(pairedDesktop = desktop),
+                )
+            } else {
+                local.copy(settings = local.settings.copy(pairedDesktop = desktop))
+            }
+            merged
+        }
+    }
     fun setKey(name: String, value: String) = repo.setKey(name, value)
 
     suspend fun listModels(engine: Engine): List<String> = CloudProviders.listModels(engine, keyFor(engine))

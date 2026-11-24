@@ -347,7 +347,23 @@ object WorkoutMusicPlayer {
 
         loadJob = scope.launch {
             try {
-                // Fast path: if the full audio file is already in local disk cache, play instantly with zero network delay!
+                // 1. Fastest path: permanently downloaded offline audio file on device -> ZERO network!
+                val localDownload = MusicDownloadManager.localFileFor(ctx, track.videoId)
+                if (localDownload != null) {
+                    val mediaItem = MediaItem.Builder()
+                        .setMediaId(track.videoId)
+                        .setUri(Uri.fromFile(localDownload))
+                        .setMediaMetadata(trackMetadata(track))
+                        .build()
+                    val source = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(ctx))
+                        .createMediaSource(mediaItem)
+                    player.setMediaSource(source)
+                    player.prepare()
+                    player.play()
+                    return@launch
+                }
+
+                // 2. Fast path: if the full audio file is already in local disk cache, play instantly with zero network delay!
                 if (!forceFreshStream && MusicAudioCache.isFullyCached(ctx, track.videoId)) {
                     val source = buildCachedOnlyMediaSource(ctx, track)
                     player.setMediaSource(source)

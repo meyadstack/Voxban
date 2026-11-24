@@ -474,12 +474,11 @@ private fun ChatPane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextField(
-                // Enter sends (the field still wraps long messages).
-                draft, { v -> if (v.endsWith("\n") && !draft.endsWith("\n")) { if (v.isNotBlank()) onSend(v.trim()) } else onDraft(v) }, Modifier.weight(1f),
+                // Enter inserts a new line; use the Send button to send the message.
+                draft, onDraft, Modifier.weight(1f),
                 placeholder = { Text("Message the assistant…", color = c.inkSecondary) },
-                enabled = !thinking, maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) onSend(draft) }),
+                enabled = !thinking, singleLine = false, maxLines = 6,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,

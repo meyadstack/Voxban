@@ -11,8 +11,10 @@ import com.voicekanban.app.data.SupportPriority
 import com.voicekanban.app.data.SupportTicket
 import com.voicekanban.app.data.SupportTicketStatus
 import com.voicekanban.app.data.Workspace
+import com.voicekanban.app.music.MusicDownloadManager
 import com.voicekanban.app.music.WorkoutMusicEngine
 import com.voicekanban.app.support.SupportTicketManager
+import com.voicekanban.app.sync.DesktopSyncManager
 import com.voicekanban.app.update.AppUpdater
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -216,6 +218,32 @@ class NewFeaturesTest {
         assertEquals(1, decoded.supportTickets.size)
         assertEquals(ticket.id, decoded.supportTickets.first().id)
         assertEquals(SupportPriority.URGENT, decoded.supportTickets.first().priority)
+    }
+
+    // ------------------------------------------------------------ Desktop QR Pairing & Music Download Helpers
+
+    @Test
+    fun parsesWindowsDesktopQrUrlAndMusicDownloadHelpers() {
+        val qrUrl = "https://github.com/meyadstack/Voxban/releases/latest?voxban_pair=1&host=192.168.1.42&port=43821&token=tok_abc123&code=482910&name=My+Windows+PC"
+        val parsed = DesktopSyncManager.parseQrPayload(qrUrl)
+        assertNotNull(parsed)
+        assertEquals("192.168.1.42", parsed!!.host)
+        assertEquals(43821, parsed.port)
+        assertEquals("tok_abc123", parsed.token)
+        assertEquals("482910", parsed.code)
+        assertEquals("My Windows PC", parsed.pcName)
+
+        val deepLink = DesktopSyncManager.parseQrPayload("voicekanban://pair?host=10.0.0.5&port=43821&token=xyz")
+        assertNotNull(deepLink)
+        assertEquals("10.0.0.5", deepLink!!.host)
+        assertEquals("xyz", deepLink.token)
+
+        assertNull(DesktopSyncManager.parseQrPayload("https://example.com/random"))
+
+        assertEquals("m4a", MusicDownloadManager.extensionForMime("audio/mp4; codecs=\"mp4a.40.2\""))
+        assertEquals("webm", MusicDownloadManager.extensionForMime("audio/webm; codecs=\"opus\""))
+        assertEquals("Eye of the Tiger - Survivor", MusicDownloadManager.sanitizeFileName("Eye of the Tiger / : * ? - Survivor"))
+        assertEquals("3.5 MB", MusicDownloadManager.formatFileSize(3_670_016L))
     }
 
     @Test

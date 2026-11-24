@@ -16,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -50,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.voicekanban.app.data.WorkoutTrack
+import com.voicekanban.app.music.MusicDownloadManager
 import com.voicekanban.app.music.MusicPlaybackService
 import com.voicekanban.app.music.MusicPlayerState
 import com.voicekanban.app.music.MusicRepeatMode
@@ -83,8 +87,11 @@ fun WorkoutMusicCard(
     val ctx = LocalContext.current
     val app by vm.state.collectAsState()
     val player by WorkoutMusicPlayer.state.collectAsState()
+    val dlProgress by MusicDownloadManager.progress.collectAsState()
     val track = player.currentTrack
     val isFav = track != null && app.savedWorkoutTracks.any { it.videoId == track.videoId }
+    val isDownloaded = track != null && (app.downloadedWorkoutTracks.any { it.track.videoId == track.videoId } || MusicDownloadManager.localFileFor(ctx, track.videoId) != null)
+    val activeProgress = track?.let { dlProgress[it.videoId] }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
@@ -129,7 +136,21 @@ fun WorkoutMusicCard(
                 player = player,
                 track = track,
                 isFav = isFav,
+                isDownloaded = isDownloaded,
+                downloadProgress = activeProgress,
                 onToggleFav = { vm.toggleFavoriteTrack(track) },
+                onDownload = {
+                    if (isDownloaded) {
+                        onOpenBrowser("__DOWNLOADS__")
+                    } else if (activeProgress == null) {
+                        MusicDownloadManager.startDownload(
+                            context = ctx,
+                            track = track,
+                            onDone = { vm.addDownloadedTrack(it) },
+                            onError = { vm.showToast(com.voicekanban.app.ui.ToastKind.ERROR, "Download failed", it) },
+                        )
+                    }
+                },
                 onPlayPause = { WorkoutMusicPlayer.togglePlayPause(ctx) },
                 onPrev = { WorkoutMusicPlayer.previous(ctx) },
                 onNext = { WorkoutMusicPlayer.next(ctx) },
@@ -151,6 +172,11 @@ fun WorkoutMusicCard(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (app.downloadedWorkoutTracks.isNotEmpty()) {
+                Chip("⬇️ Offline (${app.downloadedWorkoutTracks.size})", selected = false, tint = c.low) {
+                    onOpenBrowser("__DOWNLOADS__")
+                }
+            }
             if (app.savedWorkoutTracks.isNotEmpty()) {
                 Chip("❤️ Saved (${app.savedWorkoutTracks.size})", selected = false, tint = c.voiceTertiary) {
                     onOpenBrowser("__SAVED__")
@@ -171,7 +197,10 @@ private fun NowPlayingBody(
     player: MusicPlayerState,
     track: WorkoutTrack,
     isFav: Boolean,
+    isDownloaded: Boolean,
+    downloadProgress: Float?,
     onToggleFav: () -> Unit,
+    onDownload: () -> Unit,
     onPlayPause: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -205,7 +234,22 @@ private fun NowPlayingBody(
                 )
             }
             Box(
-                Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onToggleFav),
+                Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onDownload),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    downloadProgress != null -> CircularProgressIndicator(
+                        progress = { downloadProgress.coerceIn(0.05f, 1f) },
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = c.accent,
+                    )
+                    isDownloaded -> Icon(Icons.Rounded.DownloadDone, "Downloaded offline", tint = c.low, modifier = Modifier.size(20.dp))
+                    else -> Icon(Icons.Rounded.Download, "Download offline", tint = c.inkSecondary, modifier = Modifier.size(20.dp))
+                }
+            }
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onToggleFav),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -216,7 +260,7 @@ private fun NowPlayingBody(
                 )
             }
             Box(
-                Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onOpenQueue),
+                Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onOpenQueue),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Queue", tint = c.inkSecondary, modifier = Modifier.size(20.dp))
@@ -312,9 +356,9 @@ private fun NowPlayingBody(
     }
 }
 
-private enum class MusicTab { SEARCH, QUEUE, SAVED }
+private enum class MusicTab { SEARCH, QUEUE, SAVED, DOWNLOADS }
 
-/** Full bottom sheet for searching workout music, managing queue & saved favourites. */
+/** Full bottom sheet for searching workout music, downloading tracks offline, and managing queue & saved favourites. */
 @Composable
 fun WorkoutMusicSheet(
     vm: MainViewModel,
@@ -326,6 +370,34 @@ fun WorkoutMusicSheet(
     val scope = rememberCoroutineScope()
     val app by vm.state.collectAsState()
     val player by WorkoutMusicPlayer.state.collectAsState()
+    val dlProgress by MusicDownloadManager.progress.collectAsState()
+    var downloadNotice by remember { mutableStateOf<String?>(null) }
+
+    val downloadedIds = remember(app.downloadedWorkoutTracks) {
+        app.downloadedWorkoutTracks.map { it.track.videoId }.toSet()
+    }
+
+    fun triggerDownload(t: WorkoutTrack) {
+        if (t.videoId in downloadedIds) {
+            downloadNotice = "“${t.title}” is already downloaded for offline playback."
+            return
+        }
+        if (dlProgress.containsKey(t.videoId)) return
+        downloadNotice = "Downloading “${t.title}”…"
+        MusicDownloadManager.startDownload(
+            context = ctx,
+            track = t,
+            onDone = { saved ->
+                vm.addDownloadedTrack(saved)
+                downloadNotice = "Downloaded “${t.title}” (${MusicDownloadManager.formatFileSize(saved.sizeBytes)})" +
+                    if (saved.exportedToMusicFolder) " · also saved to Music/Voxban" else ""
+            },
+            onError = { err ->
+                downloadNotice = "Download failed: $err"
+                vm.showToast(com.voicekanban.app.ui.ToastKind.ERROR, "Download failed", err)
+            },
+        )
+    }
 
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && WorkoutMusicPlayer.state.value.currentTrack != null) {
@@ -343,6 +415,7 @@ fun WorkoutMusicSheet(
             when (initialQuery) {
                 "__QUEUE__" -> MusicTab.QUEUE
                 "__SAVED__" -> MusicTab.SAVED
+                "__DOWNLOADS__" -> MusicTab.DOWNLOADS
                 else -> MusicTab.SEARCH
             },
         )
@@ -380,12 +453,27 @@ fun WorkoutMusicSheet(
         }
     }
 
-    AppSheet("Workout Music", "Search songs, artists & workout mixes", onDismiss = onDismiss) {
-        // Tabs
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Pill("Search", tab == MusicTab.SEARCH, Modifier.weight(1f), Icons.Rounded.Search) { tab = MusicTab.SEARCH }
-            Pill("Queue (${player.queue.size})", tab == MusicTab.QUEUE, Modifier.weight(1f), Icons.AutoMirrored.Rounded.QueueMusic) { tab = MusicTab.QUEUE }
-            Pill("Saved (${app.savedWorkoutTracks.size})", tab == MusicTab.SAVED, Modifier.weight(1f), Icons.Rounded.LibraryMusic) { tab = MusicTab.SAVED }
+    AppSheet("Workout Music", "Search, stream & download offline tracks", onDismiss = onDismiss) {
+        // Tabs (horizontally scrollable on very compact widths)
+        Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Pill("Search", tab == MusicTab.SEARCH, icon = Icons.Rounded.Search) { tab = MusicTab.SEARCH }
+            Pill("Queue (${player.queue.size})", tab == MusicTab.QUEUE, icon = Icons.AutoMirrored.Rounded.QueueMusic) { tab = MusicTab.QUEUE }
+            Pill("Saved (${app.savedWorkoutTracks.size})", tab == MusicTab.SAVED, icon = Icons.Rounded.LibraryMusic) { tab = MusicTab.SAVED }
+            Pill("Offline (${app.downloadedWorkoutTracks.size})", tab == MusicTab.DOWNLOADS, icon = Icons.Rounded.DownloadDone) { tab = MusicTab.DOWNLOADS }
+        }
+
+        downloadNotice?.let { msg ->
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(12.dp))
+                    .background(c.surfaceWell).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(msg, fontSize = 11.sp, color = c.ink, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.Close, "Dismiss", tint = c.inkSecondary, modifier = Modifier.size(15.dp).clickable { downloadNotice = null })
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -441,6 +529,8 @@ fun WorkoutMusicSheet(
                             active = active,
                             isPlaying = active && player.isPlaying,
                             isFav = fav,
+                            isDownloaded = t.videoId in downloadedIds,
+                            downloadProgress = dlProgress[t.videoId],
                             onPlay = {
                                 requestNotifIfNeeded()
                                 WorkoutMusicPlayer.playTrack(ctx, t, listOf(t), autoLoadRadio = true)
@@ -449,6 +539,7 @@ fun WorkoutMusicSheet(
                                 WorkoutMusicPlayer.addToQueue(t)
                                 vm.showToast(com.voicekanban.app.ui.ToastKind.INFO, "Added to queue", t.title)
                             },
+                            onDownload = { triggerDownload(t) },
                             onToggleFav = { vm.toggleFavoriteTrack(t) },
                         )
                     }
@@ -478,7 +569,10 @@ fun WorkoutMusicSheet(
                             active = active,
                             isPlaying = active && player.isPlaying,
                             isFav = fav,
+                            isDownloaded = t.videoId in downloadedIds,
+                            downloadProgress = dlProgress[t.videoId],
                             onPlay = { WorkoutMusicPlayer.playQueueIndex(ctx, i) },
+                            onDownload = { triggerDownload(t) },
                             onRemove = if (!active) ({ WorkoutMusicPlayer.removeFromQueue(i) }) else null,
                             onToggleFav = { vm.toggleFavoriteTrack(t) },
                         )
@@ -504,6 +598,8 @@ fun WorkoutMusicSheet(
                             active = active,
                             isPlaying = active && player.isPlaying,
                             isFav = true,
+                            isDownloaded = t.videoId in downloadedIds,
+                            downloadProgress = dlProgress[t.videoId],
                             onPlay = {
                                 requestNotifIfNeeded()
                                 WorkoutMusicPlayer.playTrack(ctx, t, app.savedWorkoutTracks, autoLoadRadio = false)
@@ -511,6 +607,57 @@ fun WorkoutMusicSheet(
                             onQueue = {
                                 WorkoutMusicPlayer.addToQueue(t)
                                 vm.showToast(com.voicekanban.app.ui.ToastKind.INFO, "Added to queue", t.title)
+                            },
+                            onDownload = { triggerDownload(t) },
+                            onToggleFav = { vm.toggleFavoriteTrack(t) },
+                        )
+                    }
+                }
+            }
+
+            MusicTab.DOWNLOADS -> {
+                val downloads = app.downloadedWorkoutTracks
+                if (downloads.isEmpty()) {
+                    Text(
+                        "No downloaded songs yet. Tap the download icon on any track to save it for 100% offline playback (also saved to Music/Voxban).",
+                        color = c.inkSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                } else {
+                    val totalSize = downloads.sumOf { it.sizeBytes }
+                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${downloads.size} offline · ${MusicDownloadManager.formatFileSize(totalSize)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = c.ink,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Chip("▶ Play offline", selected = true, tint = c.low) {
+                            requestNotifIfNeeded()
+                            val list = downloads.map { it.track }
+                            WorkoutMusicPlayer.playTrack(ctx, list.first(), list, autoLoadRadio = false)
+                        }
+                    }
+                    downloads.forEach { d ->
+                        val t = d.track
+                        val active = player.currentTrack?.videoId == t.videoId
+                        val fav = app.savedWorkoutTracks.any { it.videoId == t.videoId }
+                        TrackRow(
+                            track = t,
+                            active = active,
+                            isPlaying = active && player.isPlaying,
+                            isFav = fav,
+                            isDownloaded = true,
+                            extraMeta = MusicDownloadManager.formatFileSize(d.sizeBytes),
+                            onPlay = {
+                                requestNotifIfNeeded()
+                                val list = downloads.map { it.track }
+                                WorkoutMusicPlayer.playTrack(ctx, t, list, autoLoadRadio = false)
+                            },
+                            onDeleteDownload = {
+                                vm.removeDownloadedTrack(t.videoId)
+                                downloadNotice = "Deleted offline copy of “${t.title}”."
                             },
                             onToggleFav = { vm.toggleFavoriteTrack(t) },
                         )
@@ -527,8 +674,13 @@ private fun TrackRow(
     active: Boolean,
     isPlaying: Boolean,
     isFav: Boolean,
+    isDownloaded: Boolean = false,
+    downloadProgress: Float? = null,
+    extraMeta: String? = null,
     onPlay: () -> Unit,
     onQueue: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
+    onDeleteDownload: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     onToggleFav: () -> Unit,
 ) {
@@ -555,6 +707,8 @@ private fun TrackRow(
             val meta = listOfNotNull(
                 track.artist.ifBlank { null },
                 track.durationSec.takeIf { it > 0L }?.let { WorkoutMusicEngine.formatDuration(it, isMillis = false) },
+                extraMeta,
+                if (isDownloaded && extraMeta == null) "Offline" else null,
                 if (active && isPlaying) "Playing" else null,
             ).joinToString(" · ")
             Text(
@@ -564,6 +718,35 @@ private fun TrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (onDownload != null) {
+            Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onDownload), contentAlignment = Alignment.Center) {
+                when {
+                    downloadProgress != null -> CircularProgressIndicator(
+                        progress = { downloadProgress.coerceIn(0.05f, 1f) },
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = if (active) c.onLime else c.accent,
+                    )
+                    isDownloaded -> Icon(
+                        Icons.Rounded.DownloadDone,
+                        "Downloaded",
+                        tint = if (active) c.onLime else c.low,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    else -> Icon(
+                        Icons.Rounded.Download,
+                        "Download",
+                        tint = if (active) c.onLime else c.inkSecondary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+        if (onDeleteDownload != null) {
+            Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onDeleteDownload), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.DeleteOutline, "Delete download", tint = if (active) c.onLime else c.danger, modifier = Modifier.size(18.dp))
+            }
         }
         Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onToggleFav), contentAlignment = Alignment.Center) {
             Icon(

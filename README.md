@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your tasks, notes, money, workouts and passwords — run by a voice assistant that speaks your language.</b><br/>
-  Native Android app · Kotlin + Jetpack Compose · Gemini / ChatGPT / Claude · ElevenLabs voices
+  Android (Kotlin + Jetpack Compose) &amp; Windows PC (Rust + React/TypeScript/Tailwind + Tauri v2) · Gemini / ChatGPT / Claude · ElevenLabs voices
 </p>
 
 <p align="center">
@@ -42,8 +42,9 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 | <img src="docs/screenshots/focus.png" width="200" /> | <img src="docs/screenshots/updates-support.png" width="200" /> | <img src="docs/screenshots/onboarding.png" width="200" /> | <img src="docs/screenshots/language.png" width="200" /> |
 
 <p align="center">
-  <b>Responsive landscape &amp; tablet layout</b><br/>
-  <img src="docs/screenshots/landscape.png" width="640" alt="Voxban landscape navigation rail and dashboard" />
+  <b>Responsive landscape &amp; tablet layout · Windows PC (Rust + React)</b><br/>
+  <img src="docs/screenshots/landscape.png" width="460" alt="Voxban landscape navigation rail and dashboard" />
+  <img src="docs/screenshots/windows-desktop.png" width="360" alt="Voxban for Windows PC built with Rust backend and React frontend" />
 </p>
 
 ## ✨ Features
@@ -52,7 +53,9 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 **🗂 Kanban tasks + calendar & reminders** — multiple boards and stages, priorities, tags, notes and deadlines with reminders (mark done / snooze from the notification), undo for every change, and a home-screen widget. The **Calendar** button shows the month with both board tasks and standalone **calendar-only reminders** (which stay out of the Kanban board, support Once / Daily / Weekly / Monthly repeat, and trigger exact alarm notifications). Tap any day to add a calendar reminder, add a dated board task, or move an unscheduled task onto it.
 
-**🏃 Workouts + music player** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player** with song search, workout mood mixes, automatic radio queue, audio caching for faster playback, saved favourites, and screen-off background playback with notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+**🏃 Workouts + music player & offline downloader** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player & Downloader** with song search, workout mood mixes, automatic radio queue, 150 MB disk audio caching, **one-tap offline music download** (saved locally & exported to `Music/Voxban`), saved favourites, and screen-off background playback with Android MediaStyle notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
+
+**💻 Voxban for Windows PC (Rust + React) & Phone QR Sync** — full desktop companion in [`desktop/`](desktop/) powered by a **Rust** (`axum` / `tokio` / `aes-gcm` / `qrcode`) backend and a **React + TypeScript + Tailwind CSS** web frontend packaged for Windows via **Tauri v2** (`.exe` installer & portable binary). On launch, the Windows app displays a live QR code for you to scan from **Voxban Android → More → Pair PC** for instant Wi-Fi bidirectional sync — and if someone scans without having the phone app installed, it automatically opens [GitHub Releases](https://github.com/meyadstack/Voxban/releases/latest) to download the APK!
 
 **📱 Mobile responsive & in-app updates** — adapts smoothly across narrow phones, large displays, tablets, and landscape orientation (switching to a compact side navigation rail in landscape/wide viewports). Automatically checks [GitHub Releases](https://github.com/meyadstack/Voxban/releases) and downloads & installs newer APKs right inside the app (**Settings → App updates**).
 
@@ -66,7 +69,7 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 **💬 Chat sessions** — typed chats are saved as separate conversations you can switch between, start fresh or delete. Voice keeps its own running conversation.
 
-**📝 AI note taker** — type or say scattered words; the AI writes a tidy note with headings, bullet points and checklists. Eight page colours, pinning, tick-off to-dos, and “add more” by typing or speaking.
+**📝 AI note taker** — type or say scattered words; the AI writes a tidy note with headings, bullet points and checklists. Eight page colours, pinning, tick-off to-dos, direct text selection & one-tap copy without entering edit mode, multiline Enter support, and “add more” by typing or speaking.
 
 **💰 Money manager** — income and expenses by category, monthly balance, budgets that turn red when you overspend, and a currency of your choice (৳, $, €, £, ₹ …). Or just say *“Got my salary 45,000”*.
 
@@ -152,6 +155,21 @@ keyPassword=…
 
 Without it the release build is signed with the debug key so it still installs. No API keys are built into the app.
 
+### Build Voxban for Windows PC (Rust + React + Tauri v2)
+
+```bash
+# 1. Build the React + TypeScript + Tailwind web frontend
+cd desktop/frontend && npm ci && npm run build
+
+# 2. Run the standalone Rust backend + embedded web UI (also opens http://127.0.0.1:43821)
+cd ../backend && cargo run --release --features embed-ui
+
+# 3. Or package the native Windows installer (.exe / .msi) with Tauri v2 on Windows
+cd ../src-tauri && cargo tauri build
+```
+
+GitHub Actions (`.github/workflows/build-windows.yml`) also builds `Voxban-Setup-Windows-x64.exe`, `Voxban-Windows-x64.msi`, and `Voxban-Portable-Windows-x64.exe` automatically on `windows-latest`.
+
 ### Project layout
 ```
 app/src/main/java/com/voicekanban/app/
@@ -159,15 +177,21 @@ app/src/main/java/com/voicekanban/app/
   autofill/   Android autofill service (save + suggest logins) and unlock screen
   fitness/    live workout tracker (GPS, steps, timer), foreground service, daily reminder
   focus/      focus sessions: app pinning, Do Not Disturb, end alarm
-  music/      workout music search/streaming engine, 150 MB audio disk cache, Media3 ExoPlayer & media notification service
+  music/      workout music search/streaming engine, 150 MB audio disk cache, offline downloader, Media3 ExoPlayer & media notification service
   data/       models, repository (JSON state + encrypted vault), backup format
   reminders/  deadline & calendar-only reminder alarms and notification actions
   security/   biometric lock
   support/    support ticket formatting, diagnostics, and direct email dispatch
+  sync/       CameraX + ZXing QR pairing & LAN sync client for Voxban Windows PC
   update/     GitHub Releases checker and in-app APK downloader/installer
   ui/         Compose screens: home dashboard, tasks & calendar, voice AI & chat, workout & music, notes, money, vault, focus, settings
   voice/      speech recognition and ElevenLabs / phone text-to-speech
   widget/     home-screen widget
+
+desktop/
+  backend/    Rust (Axum + Tokio + AES-256-GCM + QR) API, LAN phone sync, music cache & downloader
+  frontend/   React + TypeScript + Vite + Tailwind CSS UI aligned with the Android APK
+  src-tauri/  Native Windows desktop shell (Tauri v2 / WebView2 NSIS & MSI bundler)
 ```
 
 ## 🔐 Privacy & security

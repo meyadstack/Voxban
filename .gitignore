@@ -9,3 +9,7 @@ captures/
 /keystore/
 /dist/
 /secrets.properties
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+desktop/backend/target/
+desktop/src-tauri/target/

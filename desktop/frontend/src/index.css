@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --vk-bg: #efefe8;
+  --vk-surface: #f7f7f2;
+  --vk-raised: #ffffff;
+  --vk-well: #e6e7df;
+  --vk-border: rgba(27, 32, 28, 0.1);
+  --vk-ink: #1b201c;
+  --vk-ink-2: #5b625c;
+  --vk-ink-3: #878e88;
+  --vk-lime: #eaff87;
+  --vk-on-lime: #1b201c;
+  --vk-accent: #204b37;
+  --vk-danger: #c4362c;
+  --vk-danger-soft: rgba(196, 54, 44, 0.12);
+  --vk-low: #1d7a47;
+  --vk-low-soft: rgba(29, 122, 71, 0.13);
+  --vk-med: #b2690a;
+  --vk-med-soft: rgba(178, 105, 10, 0.13);
+}
+
+.dark {
+  --vk-bg: #111412;
+  --vk-surface: #181c19;
+  --vk-raised: #1f2420;
+  --vk-well: #272d28;
+  --vk-border: rgba(235, 240, 232, 0.1);
+  --vk-ink: #f1f4ee;
+  --vk-ink-2: #a9b2aa;
+  --vk-ink-3: #768077;
+  --vk-lime: #eaff87;
+  --vk-on-lime: #151a16;
+  --vk-accent: #7ee3a8;
+  --vk-danger: #ff7970;
+  --vk-danger-soft: rgba(255, 121, 112, 0.16);
+  --vk-low: #6ee7a0;
+  --vk-low-soft: rgba(110, 231, 160, 0.15);
+  --vk-med: #f7b854;
+  --vk-med-soft: rgba(247, 184, 84, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--vk-bg);
+  color: var(--vk-ink);
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vk-card {
+  background: var(--vk-raised);
+  border: 1px solid var(--vk-border);
+  border-radius: 24px;
+}
+
+.vk-well {
+  background: var(--vk-well);
+  border-radius: 16px;
+}
+
+.vk-btn-lime {
+  background: var(--vk-lime);
+  color: var(--vk-on-lime);
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.vk-btn-lime:hover {
+  opacity: 0.92;
+}
+.vk-btn-lime:active {
+  transform: scale(0.98);
+}
+
+.vk-btn-outline {
+  background: transparent;
+  color: var(--vk-ink);
+  border: 1px solid var(--vk-border);
+  border-radius: 9999px;
+  font-weight: 500;
+}
+.vk-btn-outline:hover {
+  background: var(--vk-well);
+}
+
+.qr-frame svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

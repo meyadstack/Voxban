@@ -95,6 +95,7 @@ fun SettingsSheet(
     onDismiss: () -> Unit,
     onOpenUpdateSheet: () -> Unit = {},
     onOpenSupport: () -> Unit = {},
+    onOpenPairDesktop: () -> Unit = {},
 ) {
     val c = VK.colors
     val app by vm.state.collectAsState()
@@ -162,6 +163,9 @@ fun SettingsSheet(
 
         SectionLabel("Notifications")
         NotificationRows(vm)
+
+        SectionLabel("Windows PC sync")
+        DesktopSyncSettingsPanel(vm, onOpenPairSheet = onOpenPairDesktop)
 
         SectionLabel("App updates")
         UpdateSettingsPanel(vm, onOpenUpdateSheet = onOpenUpdateSheet)

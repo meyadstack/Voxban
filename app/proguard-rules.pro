@@ -42,6 +42,7 @@
 -keep class com.voicekanban.app.update.** { *; }
 -keep class com.voicekanban.app.music.** { *; }
 -keep class com.voicekanban.app.support.** { *; }
+-keep class com.voicekanban.app.sync.** { *; }
 -dontwarn com.google.auto.value.AutoValue
 -dontwarn java.lang.reflect.AnnotatedParameterizedType
 -dontwarn java.lang.reflect.AnnotatedType
