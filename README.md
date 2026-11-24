@@ -21,9 +21,13 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 ## 📸 Screenshots
 
-| Home | Dashboard charts | Workout (live) | Focus mode |
+| Home | Dashboard charts | Workout (live) | Workout music |
 |:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/home.png" width="200" /> | <img src="docs/screenshots/home-charts.png" width="200" /> | <img src="docs/screenshots/workout.png" width="200" /> | <img src="docs/screenshots/focus.png" width="200" /> |
+| <img src="docs/screenshots/home.png" width="200" /> | <img src="docs/screenshots/home-charts.png" width="200" /> | <img src="docs/screenshots/workout.png" width="200" /> | <img src="docs/screenshots/workout-music.png" width="200" /> |
+
+| Music search & mixes | Media notification | Calendar & reminders | Support tickets |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/music-search.png" width="200" /> | <img src="docs/screenshots/music-notification.png" width="200" /> | <img src="docs/screenshots/calendar.png" width="200" /> | <img src="docs/screenshots/support.png" width="200" /> |
 
 | Tasks | Voice AI | Listening | Chat |
 |:---:|:---:|:---:|:---:|
@@ -33,9 +37,14 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 |:---:|:---:|:---:|:---:|
 | <img src="docs/screenshots/notes.png" width="200" /> | <img src="docs/screenshots/note-page.png" width="200" /> | <img src="docs/screenshots/money.png" width="200" /> | <img src="docs/screenshots/vault.png" width="200" /> |
 
-| Calendar | Welcome | 12 languages |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/calendar.png" width="200" /> | <img src="docs/screenshots/onboarding.png" width="200" /> | <img src="docs/screenshots/language.png" width="200" /> |
+| Focus mode | In-app updates & support | Welcome | 12 languages |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/focus.png" width="200" /> | <img src="docs/screenshots/updates-support.png" width="200" /> | <img src="docs/screenshots/onboarding.png" width="200" /> | <img src="docs/screenshots/language.png" width="200" /> |
+
+<p align="center">
+  <b>Responsive landscape &amp; tablet layout</b><br/>
+  <img src="docs/screenshots/landscape.png" width="640" alt="Voxban landscape navigation rail and dashboard" />
+</p>
 
 ## ✨ Features
 
