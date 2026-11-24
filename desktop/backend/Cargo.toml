@@ -42,7 +42,7 @@ open = "5"
 default = []
 embed-ui = ["dep:rust-embed"]
 
-[target.'cfg(target_os = "macos")'.build-dependencies]
+[build-dependencies]
 cc = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
