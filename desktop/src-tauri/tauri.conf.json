@@ -4,7 +4,6 @@
   "version": "3.4.0",
   "identifier": "com.voicekanban.desktop",
   "build": {
-    "beforeBuildCommand": "cd ../frontend && npm ci && npm run build",
     "frontendDist": "../frontend/dist"
   },
   "app": {
