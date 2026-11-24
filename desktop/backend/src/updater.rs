@@ -16,6 +16,7 @@ pub struct ReleaseInfo {
     pub html_url: String,
     pub apk_download_url: Option<String>,
     pub windows_download_url: Option<String>,
+    pub mac_download_url: Option<String>,
 }
 
 pub async fn check_github_release() -> Result<ReleaseInfo, String> {
@@ -47,6 +48,7 @@ pub async fn check_github_release() -> Result<ReleaseInfo, String> {
 
     let mut apk_url = None;
     let mut win_url = None;
+    let mut mac_url = None;
     if let Some(assets) = val.get("assets").and_then(|v| v.as_array()) {
         for a in assets {
             let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
@@ -55,6 +57,8 @@ pub async fn check_github_release() -> Result<ReleaseInfo, String> {
                 apk_url = dl;
             } else if (name.ends_with(".exe") || name.ends_with(".msi")) && win_url.is_none() {
                 win_url = dl;
+            } else if (name.ends_with(".dmg") || name.ends_with(".app.tar.gz")) && mac_url.is_none() {
+                mac_url = dl;
             }
         }
     }
@@ -69,6 +73,7 @@ pub async fn check_github_release() -> Result<ReleaseInfo, String> {
         html_url,
         apk_download_url: apk_url,
         windows_download_url: win_url,
+        mac_download_url: mac_url,
     })
 }
 

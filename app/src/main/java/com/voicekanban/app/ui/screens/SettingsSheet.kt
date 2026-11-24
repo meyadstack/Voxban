@@ -164,7 +164,7 @@ fun SettingsSheet(
         SectionLabel("Notifications")
         NotificationRows(vm)
 
-        SectionLabel("Windows PC sync")
+        SectionLabel("Desktop sync (Windows & Mac)")
         DesktopSyncSettingsPanel(vm, onOpenPairSheet = onOpenPairDesktop)
 
         SectionLabel("App updates")

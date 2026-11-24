@@ -51,6 +51,7 @@ export default function App() {
   const [standaloneBypass, setStandaloneBypass] = useState(false);
   const [pairModalOpen, setPairModalOpen] = useState(false);
   const [section, setSection] = useState<Section>("HOME");
+  const isMac = typeof navigator !== "undefined" && /Mac|Darwin/i.test(navigator.platform || navigator.userAgent);
 
   // Persistent background audio player across all tabs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -229,7 +230,7 @@ export default function App() {
             <div className="hidden sm:block min-w-0">
               <div className="font-bold text-base leading-tight">Voxban</div>
               <div className="text-[10px] truncate" style={{ color: "var(--vk-ink-3)" }}>
-                Windows PC · Rust
+                {isMac ? "macOS · Rust" : "Windows · Rust"}
               </div>
             </div>
           </div>

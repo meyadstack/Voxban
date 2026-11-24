@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your tasks, notes, money, workouts and passwords — run by a voice assistant that speaks your language.</b><br/>
-  Android (Kotlin + Jetpack Compose) &amp; Windows PC (Rust + React/TypeScript/Tailwind + Tauri v2) · Gemini / ChatGPT / Claude · ElevenLabs voices
+  Android (Kotlin + Jetpack Compose) &amp; Desktop for Windows &amp; macOS (Rust + React/TypeScript/Tailwind + Tauri v2) · Gemini / ChatGPT / Claude · ElevenLabs voices
 </p>
 
 <p align="center">
@@ -55,7 +55,7 @@ Voxban is a Kanban board with a calendar, AI note taker, money manager, workout 
 
 **🏃 Workouts + music player & offline downloader** — walking, running, cycling, yoga, strength, HIIT — or **create your own** (name, icon, intensity, daily goal, GPS and step tracking). Start the timer and see **live** time, distance, speed, pace, steps and calories, keep going with the screen off (live notification), pause / resume, and review your history and weekly chart. Includes a built-in **Workout Music Player & Downloader** with song search, workout mood mixes, automatic radio queue, 150 MB disk audio caching, **one-tap offline music download** (saved locally & exported to `Music/Voxban`), saved favourites, and screen-off background playback with Android MediaStyle notification bar and lock-screen controls. A **daily workout reminder** (time + days) nudges you unless you already hit today’s goal.
 
-**💻 Voxban for Windows PC (Rust + React) & Phone QR Sync** — full desktop companion in [`desktop/`](desktop/) powered by a **Rust** (`axum` / `tokio` / `aes-gcm` / `qrcode`) backend and a **React + TypeScript + Tailwind CSS** web frontend packaged for Windows via **Tauri v2** (`.exe` installer & portable binary). On launch, the Windows app displays a live QR code for you to scan from **Voxban Android → More → Pair PC** for instant Wi-Fi bidirectional sync — and if someone scans without having the phone app installed, it automatically opens [GitHub Releases](https://github.com/meyadstack/Voxban/releases/latest) to download the APK!
+**💻 Voxban Desktop for Windows & macOS (Rust + React) & Phone QR Sync** — full desktop companion in [`desktop/`](desktop/) powered by a **Rust** (`axum` / `tokio` / `aes-gcm` / `qrcode`) backend and a **React + TypeScript + Tailwind CSS** web frontend packaged natively via **Tauri v2** (Windows `.exe` / `.msi` installer & macOS `.dmg` for Apple Silicon and Intel). On launch, the desktop app displays a live QR code for you to scan from **Voxban Android → More → Pair Desktop** for instant Wi-Fi bidirectional sync — and if someone scans without having the phone app installed, it automatically opens [GitHub Releases](https://github.com/meyadstack/Voxban/releases/latest) to download the APK!
 
 **📱 Mobile responsive & in-app updates** — adapts smoothly across narrow phones, large displays, tablets, and landscape orientation (switching to a compact side navigation rail in landscape/wide viewports). Automatically checks [GitHub Releases](https://github.com/meyadstack/Voxban/releases) and downloads & installs newer APKs right inside the app (**Settings → App updates**).
 
@@ -155,20 +155,20 @@ keyPassword=…
 
 Without it the release build is signed with the debug key so it still installs. No API keys are built into the app.
 
-### Build Voxban for Windows PC (Rust + React + Tauri v2)
+### Build Voxban Desktop for Windows & macOS (Rust + React + Tauri v2)
 
 ```bash
 # 1. Build the React + TypeScript + Tailwind web frontend
 cd desktop/frontend && npm ci && npm run build
 
-# 2. Run the standalone Rust backend + embedded web UI (also opens http://127.0.0.1:43821)
+# 2. Run the standalone Rust backend + embedded web UI (opens http://127.0.0.1:43821)
 cd ../backend && cargo run --release --features embed-ui
 
-# 3. Or package the native Windows installer (.exe / .msi) with Tauri v2 on Windows
-cd ../src-tauri && cargo tauri build
+# 3. Or build the native Windows (.exe/.msi) or macOS (.app/.dmg) desktop app
+cd ../src-tauri && cargo build --release
 ```
 
-GitHub Actions (`.github/workflows/build-windows.yml`) also builds `Voxban-Setup-Windows-x64.exe`, `Voxban-Windows-x64.msi`, and `Voxban-Portable-Windows-x64.exe` automatically on `windows-latest`.
+GitHub Actions (`.github/workflows/build-windows.yml`) automatically builds and attaches `Voxban-Setup-Windows-x64.exe`, `Voxban-Windows-x64.msi`, `Voxban-Portable-Windows-x64.exe`, `Voxban-macOS-arm64.dmg` (Apple Silicon), and `Voxban-macOS-x64.dmg` (Intel) on every release tag.
 
 ### Project layout
 ```

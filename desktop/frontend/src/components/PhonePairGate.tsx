@@ -28,6 +28,9 @@ export function PhonePairGate({
   const session = pairInfo?.session;
   const phone = pairInfo?.pairedPhone;
   const githubUrl = pairInfo?.githubReleasesUrl || "https://github.com/meyadstack/Voxban/releases/latest";
+  const isMac = typeof navigator !== "undefined" && /Mac|Darwin/i.test(navigator.platform || navigator.userAgent);
+  const platformTitle = isMac ? "Voxban for macOS" : "Voxban for Windows PC";
+  const deviceWord = isMac ? "Mac" : "Windows PC";
 
   return (
     <div
@@ -53,7 +56,7 @@ export function PhonePairGate({
           <VoxbanAvatar size={48} />
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight">Voxban for Windows PC</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{platformTitle}</h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EAFF87] text-[#1B201C]">
                 Rust Backend · Synced with APK
               </span>
@@ -147,11 +150,11 @@ export function PhonePairGate({
               </h2>
               <ol className="text-sm space-y-2.5 pl-4 list-decimal" style={{ color: "var(--vk-ink-2)" }}>
                 <li>
-                  Connect your Android phone and Windows PC to the <b style={{ color: "var(--vk-ink)" }}>same Wi-Fi network</b>.
+                  Connect your Android phone and {deviceWord} to the <b style={{ color: "var(--vk-ink)" }}>same Wi-Fi network</b>.
                 </li>
                 <li>
                   Open <b style={{ color: "var(--vk-ink)" }}>Voxban</b> on your phone and tap{" "}
-                  <b style={{ color: "var(--vk-ink)" }}>More → Pair PC</b> (or Settings → Windows PC sync).
+                  <b style={{ color: "var(--vk-ink)" }}>More → Pair Desktop</b> (or Settings → Desktop sync).
                 </li>
                 <li>
                   Point your phone camera at this QR code — your boards, calendar reminders, notes, workouts &amp; music favourites sync automatically.
@@ -197,7 +200,7 @@ export function PhonePairGate({
                   className="underline hover:opacity-80 cursor-pointer bg-transparent border-0 text-xs inline-flex items-center gap-1"
                   style={{ color: "var(--vk-ink-2)" }}
                 >
-                  <Laptop className="w-3.5 h-3.5" /> Continue standalone on PC
+                  <Laptop className="w-3.5 h-3.5" /> Continue standalone on {deviceWord}
                 </button>
               )}
             </div>

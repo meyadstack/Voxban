@@ -24,7 +24,13 @@ pub fn generate_pairing_session(port: u16) -> PairingSessionInfo {
         .ok()
         .and_then(|s| s.into_string().ok())
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "Voxban Windows PC".to_string());
+        .unwrap_or_else(|| {
+            if cfg!(target_os = "macos") {
+                "Voxban Mac".to_string()
+            } else {
+                "Voxban Windows PC".to_string()
+            }
+        });
 
     let mut rng = rand::thread_rng();
     let token: String = (0..24)

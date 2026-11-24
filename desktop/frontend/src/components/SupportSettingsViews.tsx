@@ -430,6 +430,26 @@ export function SettingsView({
               >
                 Open Release Page <ExternalLink className="w-3 h-3" />
               </a>
+              {release.macDownloadUrl && (
+                <a
+                  href={release.macDownloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+                >
+                  <Download className="w-3 h-3" /> macOS (.dmg)
+                </a>
+              )}
+              {release.windowsDownloadUrl && (
+                <a
+                  href={release.windowsDownloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+                >
+                  <Download className="w-3 h-3" /> Windows (.exe)
+                </a>
+              )}
               {release.apkDownloadUrl && (
                 <a
                   href={release.apkDownloadUrl}

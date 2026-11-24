@@ -235,6 +235,7 @@ export interface ReleaseInfo {
   htmlUrl: string;
   apkDownloadUrl?: string | null;
   windowsDownloadUrl?: string | null;
+  macDownloadUrl?: string | null;
 }
 
 export const NOTE_COLORS: Array<{ name: string; num: number; hex: string }> = [

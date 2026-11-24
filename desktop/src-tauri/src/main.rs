@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{menu::Menu, WebviewUrl, WebviewWindowBuilder};
 use voxban_backend::{start_server, DEFAULT_PORT};
 
 fn main() {
@@ -16,8 +16,14 @@ fn main() {
 
     tauri::Builder::default()
         .setup(move |app| {
+            // Enable native Edit/Copy/Paste/Quit shortcuts on macOS (Cmd+C, Cmd+V, Cmd+A, Cmd+Q)
+            #[cfg(target_os = "macos")]
+            if let Ok(menu) = Menu::default(app.handle()) {
+                let _ = app.set_menu(menu);
+            }
+
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
-                .title("Voxban — Windows PC")
+                .title("Voxban")
                 .inner_size(1240.0, 820.0)
                 .min_inner_size(860.0, 620.0)
                 .center()

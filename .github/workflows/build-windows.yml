@@ -1,4 +1,4 @@
-name: Build Voxban Windows PC
+name: Build Voxban Desktop (Windows & macOS)
 
 on:
   push:
@@ -6,10 +6,13 @@ on:
     paths:
       - "desktop/**"
       - ".github/workflows/build-windows.yml"
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
   build-windows:
+    name: Windows (x64)
     runs-on: windows-latest
     permissions:
       contents: write
@@ -42,9 +45,7 @@ jobs:
 
       - name: Build native Windows Desktop installer (Tauri v2 NSIS + MSI)
         working-directory: desktop/src-tauri
-        run: |
-          cargo install tauri-cli --version "^2" --locked
-          cargo tauri build --bundles nsis,msi
+        run: npx --yes @tauri-apps/cli@2 build --bundles nsis,msi
 
       - name: Collect Windows artifacts
         shell: pwsh
@@ -64,3 +65,105 @@ jobs:
         with:
           name: Voxban-Windows-x64
           path: windows-dist/*
+
+      - name: Attach Windows installers to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} windows-dist/* --clobber
+
+  build-macos:
+    name: macOS (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            label: Apple Silicon
+            dmg_name: Voxban-macOS-arm64.dmg
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            label: Intel
+            dmg_name: Voxban-macOS-x64.dmg
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build React web frontend
+        working-directory: desktop/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run Rust backend tests
+        working-directory: desktop/backend
+        run: cargo test --features embed-ui
+
+      - name: Build native macOS desktop binary
+        working-directory: desktop/src-tauri
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Voxban.app and DMG
+        run: |
+          STAGE=$(mktemp -d)
+          mkdir -p "$STAGE/Voxban.app/Contents/MacOS" "$STAGE/Voxban.app/Contents/Resources"
+          cp desktop/src-tauri/target/${{ matrix.target }}/release/voxban-desktop "$STAGE/Voxban.app/Contents/MacOS/Voxban"
+          chmod +x "$STAGE/Voxban.app/Contents/MacOS/Voxban"
+          cp desktop/src-tauri/icons/icon.icns "$STAGE/Voxban.app/Contents/Resources/icon.icns"
+          cat > "$STAGE/Voxban.app/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleDisplayName</key><string>Voxban</string>
+            <key>CFBundleExecutable</key><string>Voxban</string>
+            <key>CFBundleIconFile</key><string>icon.icns</string>
+            <key>CFBundleIdentifier</key><string>com.voicekanban.desktop</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>Voxban</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>3.4.0</string>
+            <key>CFBundleVersion</key><string>10</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSLocalNetworkUsageDescription</key><string>Voxban uses your local Wi-Fi network to pair and sync with the Voxban Android app.</string>
+            <key>NSMicrophoneUsageDescription</key><string>Voxban uses your microphone for Voice AI commands.</string>
+          </dict>
+          </plist>
+          PLIST
+          codesign --force --deep --sign - "$STAGE/Voxban.app"
+          ln -s /Applications "$STAGE/Applications"
+          mkdir -p macos-dist
+          hdiutil create -volname "Voxban" -srcfolder "$STAGE" -ov -format UDZO "macos-dist/${{ matrix.dmg_name }}"
+          ls -lh macos-dist/
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Voxban-${{ matrix.target }}
+          path: macos-dist/*
+
+      - name: Attach macOS DMG to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} macos-dist/* --clobber

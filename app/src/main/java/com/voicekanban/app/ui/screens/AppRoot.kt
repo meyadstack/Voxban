@@ -366,7 +366,7 @@ private fun MoreSheet(onDismiss: () -> Unit, onSettings: () -> Unit, onSupport: 
     val cols = if (VK.responsive.isWideWidth) 3 else 2
     val items = MORE_SECTIONS.map { Triple<String, String, ImageVector>(it.first.name, it.second, it.third) } +
         listOf(
-            Triple("PAIR_PC", "Pair PC", Icons.Rounded.QrCodeScanner),
+            Triple("PAIR_PC", "Pair Desktop", Icons.Rounded.QrCodeScanner),
             Triple("SUPPORT", "Support", Icons.Rounded.SupportAgent),
             Triple("SETTINGS", "Settings", Icons.Rounded.Settings),
         )

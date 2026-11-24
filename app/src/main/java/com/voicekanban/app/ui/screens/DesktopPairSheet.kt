@@ -102,10 +102,10 @@ fun DesktopSyncSettingsPanel(vm: MainViewModel, onOpenPairSheet: () -> Unit) {
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("Voxban for Windows PC", style = MaterialTheme.typography.titleMedium, color = c.ink)
+                Text("Voxban Desktop (Win / Mac)", style = MaterialTheme.typography.titleMedium, color = c.ink)
                 Text(
                     if (paired != null) "Paired with ${paired.pcName} (${paired.host})"
-                    else "Scan QR code on your Windows PC to link & sync",
+                    else "Scan QR code on your Windows PC or Mac to link & sync",
                     fontSize = 11.sp,
                     color = c.inkSecondary,
                     maxLines = 1,
@@ -121,7 +121,7 @@ fun DesktopSyncSettingsPanel(vm: MainViewModel, onOpenPairSheet: () -> Unit) {
         ) {
             Icon(Icons.Rounded.QrCodeScanner, null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (paired != null) "Manage PC Sync & Scan QR" else "Scan Windows PC QR Code")
+            Text(if (paired != null) "Manage Desktop Sync & QR" else "Scan Desktop QR Code")
         }
     }
 }
@@ -170,7 +170,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
     }
 
     AppSheet(
-        title = "Link Windows PC",
+        title = "Link Desktop (PC / Mac)",
         subtitle = "Scan the QR code in Voxban Desktop on the same Wi-Fi",
         onDismiss = onDismiss,
     ) {
