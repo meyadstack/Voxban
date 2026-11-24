@@ -20,7 +20,9 @@ import type {
   SupportCategory,
   SupportPriority,
   SupportTicket,
+  UpdateInstallProgress,
 } from "../types";
+import { formatBytes } from "../types";
 
 const SUPPORT_EMAIL = "abdullahmeyad7@gmail.com";
 
@@ -66,10 +68,10 @@ export function SupportView({
     setDescription("");
 
     if (mode === "MAILTO") {
-      window.location.href = res.email.mailtoUrl;
+      void api.openExternalUrl(res.email.mailtoUrl);
       setNotice(`Ticket #${res.ticket.id} opened in your default mail app addressed to ${SUPPORT_EMAIL}.`);
     } else if (mode === "GMAIL") {
-      window.open(res.email.gmailWebUrl, "_blank", "noopener,noreferrer");
+      void api.openExternalUrl(res.email.gmailWebUrl);
       setNotice(`Ticket #${res.ticket.id} opened in Gmail Web Compose addressed to ${SUPPORT_EMAIL}.`);
     } else {
       await navigator.clipboard.writeText(`To: ${res.email.to}\nSubject: ${res.email.subject}\n\n${res.email.body}`);
@@ -269,11 +271,27 @@ export function SettingsView({
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [release, setRelease] = useState<ReleaseInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateProg, setUpdateProg] = useState<UpdateInstallProgress | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void api.getKeys().then((r) => setConfiguredKeys(r.configured)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!updateProg || (updateProg.phase !== "downloading" && updateProg.phase !== "installing")) return;
+    const id = setInterval(() => {
+      void api
+        .updateProgress()
+        .then((p) => {
+          setUpdateProg(p);
+          if (p.phase === "error" && p.error) setMsg(p.error);
+          else if (p.phase === "ready" || p.phase === "restarting") setMsg(p.message);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearInterval(id);
+  }, [updateProg?.phase]);
 
   const updateSettings = (patch: Partial<AppState["settings"]>) => {
     onSaveState({ ...state, settings: { ...state.settings, ...patch } });
@@ -286,9 +304,20 @@ export function SettingsView({
       if (res.ok && res.release) setRelease(res.release);
       else setMsg(res.error || "Could not check GitHub Releases.");
     } catch (e) {
-      setMsg(String(e));
+      setMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setCheckingUpdate(false);
+    }
+  };
+
+  const installInAppUpdate = async () => {
+    setMsg(null);
+    try {
+      const res = await api.installUpdate();
+      if (res.ok && res.progress) setUpdateProg(res.progress);
+      else setMsg(res.error || "Could not start in-app update.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -405,7 +434,7 @@ export function SettingsView({
           <div>
             <h3 className="font-semibold text-sm">App Updates (GitHub Releases)</h3>
             <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-              Voxban Desktop v3.5.0 · checks github.com/meyadstack/Voxban
+              Voxban Desktop v3.5.1 · checks github.com/meyadstack/Voxban
             </p>
           </div>
           <button
@@ -437,44 +466,90 @@ export function SettingsView({
                 <MarkdownChangelog markdown={release.notes} />
               </div>
             )}
+            {updateProg && updateProg.phase !== "idle" && (
+              <div
+                className="p-3 rounded-xl space-y-1.5"
+                style={{ background: "var(--vk-raised)", border: "1px solid var(--vk-border)" }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{updateProg.message}</span>
+                  {updateProg.phase === "downloading" && updateProg.totalBytes > 0 && (
+                    <span className="font-mono text-[11px]" style={{ color: "var(--vk-ink-2)" }}>
+                      {formatBytes(updateProg.downloadedBytes)} / {formatBytes(updateProg.totalBytes)}
+                    </span>
+                  )}
+                </div>
+                {(updateProg.phase === "downloading" || updateProg.phase === "installing") && (
+                  <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "var(--vk-border)" }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width:
+                          updateProg.phase === "installing"
+                            ? "100%"
+                            : `${Math.max(
+                                6,
+                                updateProg.totalBytes > 0
+                                  ? Math.min(100, Math.round((updateProg.downloadedBytes / updateProg.totalBytes) * 100))
+                                  : 20,
+                              )}%`,
+                        background: "#1B201C",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
-              <a
-                href={release.htmlUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="vk-btn-lime px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+              {release.updateAvailable && (
+                <button
+                  onClick={() => void installInAppUpdate()}
+                  disabled={
+                    updateProg?.phase === "downloading" ||
+                    updateProg?.phase === "installing" ||
+                    updateProg?.phase === "restarting"
+                  }
+                  className="vk-btn-lime px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  <CloudDownload className="w-3.5 h-3.5" />
+                  {updateProg?.phase === "downloading"
+                    ? "Downloading…"
+                    : updateProg?.phase === "installing"
+                    ? "Installing…"
+                    : updateProg?.phase === "restarting"
+                    ? "Restarting…"
+                    : "Download & Install In-App"}
+                </button>
+              )}
+              <button
+                onClick={() => void api.openExternalUrl(release.htmlUrl)}
+                className={`${release.updateAvailable ? "vk-btn-outline" : "vk-btn-lime"} px-3.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer`}
               >
                 Open Release Page <ExternalLink className="w-3 h-3" />
-              </a>
+              </button>
               {release.macDownloadUrl && (
-                <a
-                  href={release.macDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+                <button
+                  onClick={() => void api.openExternalUrl(release.macDownloadUrl!)}
+                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Download className="w-3 h-3" /> macOS (.dmg)
-                </a>
+                </button>
               )}
               {release.windowsDownloadUrl && (
-                <a
-                  href={release.windowsDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+                <button
+                  onClick={() => void api.openExternalUrl(release.windowsDownloadUrl!)}
+                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Download className="w-3 h-3" /> Windows (.exe)
-                </a>
+                </button>
               )}
               {release.apkDownloadUrl && (
-                <a
-                  href={release.apkDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 no-underline"
+                <button
+                  onClick={() => void api.openExternalUrl(release.apkDownloadUrl!)}
+                  className="vk-btn-outline px-3.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Download className="w-3 h-3" /> Android APK
-                </a>
+                </button>
               )}
             </div>
           </div>

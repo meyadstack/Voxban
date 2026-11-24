@@ -117,9 +117,36 @@ mod tests {
 
     #[test]
     fn semver_updater_compares_correctly() {
-        assert!(is_newer_version("v3.6.0", "3.5.0"));
-        assert!(!is_newer_version("v3.5.0", "3.5.0"));
-        assert!(!is_newer_version("3.4.2", "3.5.0"));
+        assert!(is_newer_version("v3.6.0", "3.5.1"));
+        assert!(!is_newer_version("v3.5.1", "3.5.1"));
+        assert!(!is_newer_version("3.5.0", "3.5.1"));
+    }
+
+    #[test]
+    fn updater_selects_exact_platform_architecture_asset() {
+        let sample = serde_json::json!({
+            "tag_name": "v3.9.0",
+            "name": "Voxban v3.9.0",
+            "body": "### Highlights\n- In-app updater",
+            "html_url": "https://github.com/meyadstack/Voxban/releases/tag/v3.9.0",
+            "assets": [
+                { "name": "Voxban-macOS-x64.dmg", "browser_download_url": "https://example.com/x64.dmg" },
+                { "name": "Voxban-macOS-arm64.dmg", "browser_download_url": "https://example.com/arm64.dmg" },
+                { "name": "Voxban-Portable-Windows-x64.exe", "browser_download_url": "https://example.com/portable.exe" },
+                { "name": "Voxban-Setup-Windows-x64.exe", "browser_download_url": "https://example.com/setup.exe" },
+                { "name": "Voxban-3.9.0.apk", "browser_download_url": "https://example.com/app.apk" }
+            ]
+        });
+        let arm = updater::parse_release_json(&sample, "macos", "aarch64");
+        assert_eq!(arm.recommended_download_url.as_deref(), Some("https://example.com/arm64.dmg"));
+        assert_eq!(arm.recommended_asset_name.as_deref(), Some("Voxban-macOS-arm64.dmg"));
+
+        let intel = updater::parse_release_json(&sample, "macos", "x86_64");
+        assert_eq!(intel.recommended_download_url.as_deref(), Some("https://example.com/x64.dmg"));
+
+        let win = updater::parse_release_json(&sample, "windows", "x86_64");
+        assert_eq!(win.recommended_download_url.as_deref(), Some("https://example.com/setup.exe"));
+        assert!(win.update_available);
     }
 
     #[test]

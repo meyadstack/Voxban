@@ -1,4 +1,5 @@
 import { CheckCircle2, Download, ExternalLink, Laptop, QrCode, RefreshCw, Smartphone, Unlink, Wifi } from "lucide-react";
+import { api } from "../api";
 import type { PairInfoResponse } from "../types";
 import { VoxbanAvatar } from "./VoxbanAvatar";
 
@@ -178,16 +179,14 @@ export function PhonePairGate({
                 Scan the QR code with your phone’s regular camera app — or click below — to jump straight to{" "}
                 <b>GitHub Releases</b> and download the latest Voxban Android APK.
               </p>
-              <a
-                href={githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="vk-btn-lime px-5 py-2.5 text-sm inline-flex items-center gap-2 no-underline"
+              <button
+                onClick={() => void api.openExternalUrl(githubUrl)}
+                className="vk-btn-lime px-5 py-2.5 text-sm inline-flex items-center gap-2 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 Download Voxban Android APK
                 <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              </button>
             </div>
 
             <div className="flex items-center justify-between text-xs px-1" style={{ color: "var(--vk-ink-3)" }}>

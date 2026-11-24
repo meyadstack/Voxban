@@ -46,6 +46,7 @@ pub struct AppContext {
     pub events: broadcast::Sender<String>,
     pub frontend_dir: Option<PathBuf>,
     pub unlocked_vault_passphrase: RwLock<Option<String>>,
+    pub update_progress: Arc<RwLock<updater::UpdateInstallProgress>>,
 }
 
 impl AppContext {
@@ -71,6 +72,7 @@ impl AppContext {
             events: tx,
             frontend_dir,
             unlocked_vault_passphrase: RwLock::new(None),
+            update_progress: Arc::new(RwLock::new(updater::UpdateInstallProgress::default())),
         })
     }
 
@@ -114,6 +116,9 @@ pub fn build_router(ctx: Arc<AppContext>) -> Router {
         .route("/api/vault/biometric/disable", post(vault_biometric_disable))
         .route("/api/support/format", post(support_format))
         .route("/api/updates/check", get(updates_check))
+        .route("/api/updates/install", post(updates_install))
+        .route("/api/updates/progress", get(updates_progress))
+        .route("/api/system/open-url", post(system_open_url))
         .route("/api/ws", get(ws_handler))
         .fallback(serve_frontend)
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
@@ -973,6 +978,84 @@ async fn updates_check() -> impl IntoResponse {
     match updater::check_github_release().await {
         Ok(info) => (StatusCode::OK, Json(json!({ "ok": true, "release": info }))),
         Err(err) => (StatusCode::BAD_GATEWAY, Json(json!({ "ok": false, "error": err }))),
+    }
+}
+
+async fn updates_progress(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    let prog = ctx.update_progress.read().await.clone();
+    Json(prog)
+}
+
+async fn updates_install(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    {
+        let cur = ctx.update_progress.read().await;
+        if cur.phase == "downloading" || cur.phase == "installing" || cur.phase == "restarting" {
+            return (StatusCode::OK, Json(json!({ "ok": true, "progress": cur.clone() })));
+        }
+    }
+
+    let release = match updater::check_github_release().await {
+        Ok(r) => r,
+        Err(err) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "ok": false, "error": err })),
+            );
+        }
+    };
+
+    if release.recommended_download_url.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "ok": false,
+                "error": format!(
+                    "No desktop installer asset found on {} for {}/{} yet. Try again shortly or open GitHub Releases.",
+                    release.latest_tag, std::env::consts::OS, std::env::consts::ARCH
+                ),
+            })),
+        );
+    }
+
+    {
+        let mut p = ctx.update_progress.write().await;
+        p.phase = "downloading".into();
+        p.version = release.latest_version.clone();
+        p.downloaded_bytes = 0;
+        p.total_bytes = 0;
+        p.message = format!("Starting download for {}…", release.latest_tag);
+        p.error = None;
+    }
+
+    let progress = ctx.update_progress.clone();
+    let fallback_dir = ctx.storage.data_dir.clone();
+    tokio::spawn(async move {
+        updater::download_and_install_update(progress, release, fallback_dir).await;
+    });
+
+    let snap = ctx.update_progress.read().await.clone();
+    (StatusCode::OK, Json(json!({ "ok": true, "progress": snap })))
+}
+
+#[derive(Deserialize)]
+struct OpenUrlReq {
+    url: String,
+}
+
+async fn system_open_url(Json(req): Json<OpenUrlReq>) -> impl IntoResponse {
+    let clean = req.url.trim();
+    if !(clean.starts_with("https://") || clean.starts_with("http://") || clean.starts_with("mailto:")) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "Unsupported URL scheme." })),
+        );
+    }
+    match open::that(clean) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true }))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": format!("Could not open URL: {e}") })),
+        ),
     }
 }
 

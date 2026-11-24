@@ -3,7 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-pub const APP_VERSION: &str = "3.5.0";
+pub const APP_VERSION: &str = "3.5.1";
 pub const SUPPORT_EMAIL: &str = "abdullahmeyad7@gmail.com";
 pub const GITHUB_RELEASES_URL: &str = "https://github.com/meyadstack/Voxban/releases/latest";
 pub const GITHUB_API_LATEST_URL: &str =

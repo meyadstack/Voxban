@@ -140,8 +140,8 @@ jobs:
             <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
             <key>CFBundleName</key><string>Voxban</string>
             <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>3.5.0</string>
-            <key>CFBundleVersion</key><string>13</string>
+            <key>CFBundleShortVersionString</key><string>3.5.1</string>
+            <key>CFBundleVersion</key><string>14</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
             <key>NSHighResolutionCapable</key><true/>
             <key>NSLocalNetworkUsageDescription</key><string>Voxban uses your local Wi-Fi network to pair and sync with the Voxban Android app.</string>

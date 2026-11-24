@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { api } from "../api";
 
 type Block =
   | { kind: "heading"; level: number; text: string }
@@ -122,9 +123,11 @@ function renderInline(text: string): ReactNode[] {
           <a
             key={key++}
             href={linkMatch[2]}
-            target="_blank"
-            rel="noreferrer"
-            className="underline font-medium"
+            onClick={(e) => {
+              e.preventDefault();
+              void api.openExternalUrl(linkMatch[2]);
+            }}
+            className="underline font-medium cursor-pointer"
             style={{ color: "var(--vk-accent)" }}
           >
             {linkMatch[1]}

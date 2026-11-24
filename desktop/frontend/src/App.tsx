@@ -32,8 +32,8 @@ import { PhonePairGate } from "./components/PhonePairGate";
 import { SettingsView, SupportView } from "./components/SupportSettingsViews";
 import { VoxbanAvatar } from "./components/VoxbanAvatar";
 import { type MusicController, WorkoutMusicView } from "./components/WorkoutMusicView";
-import type { AppState, PairInfoResponse, ReleaseInfo, WorkoutTrack } from "./types";
-import { stageColorHex } from "./types";
+import type { AppState, PairInfoResponse, ReleaseInfo, UpdateInstallProgress, WorkoutTrack } from "./types";
+import { formatBytes, stageColorHex } from "./types";
 
 type Section = "HOME" | "BOARD" | "ASSISTANT" | "WORKOUT" | "NOTES" | "MONEY" | "VAULT" | "FOCUS" | "SUPPORT" | "SETTINGS";
 
@@ -55,6 +55,8 @@ export default function App() {
   const [pairInfo, setPairInfo] = useState<PairInfoResponse | null>(null);
   const [mandatoryUpdate, setMandatoryUpdate] = useState<ReleaseInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateProg, setUpdateProg] = useState<UpdateInstallProgress | null>(null);
+  const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [standaloneBypass, setStandaloneBypass] = useState(false);
   const [pairModalOpen, setPairModalOpen] = useState(false);
   const [section, setSection] = useState<Section>("HOME");
@@ -216,11 +218,45 @@ export default function App() {
     );
   }
 
+  // Poll Rust in-app updater progress while downloading / installing
+  useEffect(() => {
+    if (!updateProg || (updateProg.phase !== "downloading" && updateProg.phase !== "installing")) return;
+    const id = setInterval(() => {
+      void api
+        .updateProgress()
+        .then((p) => {
+          setUpdateProg(p);
+          if (p.phase === "error" && p.error) setUpdateErr(p.error);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearInterval(id);
+  }, [updateProg?.phase]);
+
+  const startInAppUpdate = useCallback(async () => {
+    setUpdateErr(null);
+    try {
+      const res = await api.installUpdate();
+      if (res.ok && res.progress) {
+        setUpdateProg(res.progress);
+      } else {
+        setUpdateErr(res.error || "Could not start in-app update.");
+      }
+    } catch (e) {
+      setUpdateErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   // Mandatory Update Gate: block usage when a newer GitHub Release is available
   if (mandatoryUpdate) {
-    const primaryDownloadUrl = isMac
-      ? mandatoryUpdate.macDownloadUrl || mandatoryUpdate.htmlUrl
-      : mandatoryUpdate.windowsDownloadUrl || mandatoryUpdate.htmlUrl;
+    const busyUpdating =
+      updateProg?.phase === "downloading" ||
+      updateProg?.phase === "installing" ||
+      updateProg?.phase === "restarting";
+    const pct =
+      updateProg && updateProg.totalBytes > 0
+        ? Math.min(100, Math.round((updateProg.downloadedBytes / updateProg.totalBytes) * 100))
+        : 0;
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--vk-bg)" }}>
         <div className="max-w-lg w-full vk-card p-7 space-y-5 shadow-xl">
@@ -236,8 +272,8 @@ export default function App() {
             </div>
           </div>
           <p className="text-xs leading-relaxed" style={{ color: "var(--vk-ink-2)" }}>
-            A newer version of Voxban Desktop is required before continuing. Installing the update keeps all your
-            saved boards, notes, reminders, music downloads, and encrypted vault data intact.
+            A newer version of Voxban Desktop is required before continuing. Updating in-app downloads the latest
+            version automatically and keeps all your saved boards, notes, reminders, music, and encrypted vault intact.
           </p>
           {mandatoryUpdate.notes && (
             <div
@@ -247,28 +283,62 @@ export default function App() {
               <MarkdownChangelog markdown={mandatoryUpdate.notes} />
             </div>
           )}
+
+          {updateProg && updateProg.phase !== "idle" && (
+            <div className="vk-well p-3.5 rounded-2xl space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{updateProg.message}</span>
+                {updateProg.phase === "downloading" && updateProg.totalBytes > 0 && (
+                  <span className="font-mono text-[11px]" style={{ color: "var(--vk-ink-2)" }}>
+                    {formatBytes(updateProg.downloadedBytes)} / {formatBytes(updateProg.totalBytes)} ({pct}%)
+                  </span>
+                )}
+              </div>
+              {(updateProg.phase === "downloading" || updateProg.phase === "installing") && (
+                <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--vk-border)" }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: updateProg.phase === "installing" ? "100%" : `${Math.max(6, pct)}%`,
+                      background: "#1B201C",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {updateErr && (
+            <div className="text-xs px-3 py-2 rounded-xl" style={{ color: "var(--vk-danger)", background: "rgba(239,68,68,0.08)" }}>
+              {updateErr}
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2.5 pt-1">
-            <a
-              href={primaryDownloadUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="vk-btn-lime flex-1 py-3 px-4 text-sm font-semibold no-underline inline-flex items-center justify-center gap-2"
+            <button
+              onClick={() => void startInAppUpdate()}
+              disabled={busyUpdating}
+              className="vk-btn-lime flex-1 py-3 px-4 text-sm font-semibold cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <CloudDownload className="w-4 h-4" />
-              {isMac ? "Download macOS Update (.dmg)" : "Download Windows Update (.exe)"}
-            </a>
-            <a
-              href={mandatoryUpdate.htmlUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="vk-btn-outline py-3 px-4 text-xs no-underline inline-flex items-center justify-center gap-1.5"
+              {updateProg?.phase === "downloading"
+                ? `Downloading… ${pct}%`
+                : updateProg?.phase === "installing"
+                ? "Installing update…"
+                : updateProg?.phase === "restarting"
+                ? "Restarting Voxban…"
+                : `Update Now (${isMac ? "macOS" : "Windows"})`}
+            </button>
+            <button
+              onClick={() => void api.openExternalUrl(mandatoryUpdate.htmlUrl)}
+              className="vk-btn-outline py-3 px-4 text-xs cursor-pointer inline-flex items-center justify-center gap-1.5"
             >
-              <ExternalLink className="w-3.5 h-3.5" /> Releases
-            </a>
+              <ExternalLink className="w-3.5 h-3.5" /> GitHub
+            </button>
           </div>
           <button
             onClick={() => void checkMandatoryUpdate()}
-            disabled={checkingUpdate}
+            disabled={checkingUpdate || busyUpdating}
             className="w-full vk-btn-outline py-2 text-xs cursor-pointer inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />

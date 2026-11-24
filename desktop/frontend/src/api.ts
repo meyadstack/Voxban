@@ -5,6 +5,7 @@ import type {
   PasswordEntry,
   ReleaseInfo,
   SupportTicket,
+  UpdateInstallProgress,
   WorkoutTrack,
 } from "./types";
 
@@ -139,8 +140,19 @@ export const api = {
       body: JSON.stringify({ ticket, save, isFollowUp }),
     }),
 
-  // GitHub release updater
+  // GitHub release updater (in-app download & install + browser fallback)
   checkUpdates: () => req<{ ok: boolean; release?: ReleaseInfo; error?: string }>("/api/updates/check"),
+  installUpdate: () =>
+    req<{ ok: boolean; progress?: UpdateInstallProgress; error?: string }>("/api/updates/install", { method: "POST" }),
+  updateProgress: () => req<UpdateInstallProgress>("/api/updates/progress"),
+  openExternalUrl: (url: string) =>
+    req<{ ok: boolean; error?: string }>("/api/system/open-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }).catch(() => {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return { ok: true };
+    }),
 
   // Live WebSocket updates
   connectWs: (onMessage: (evt: { event: string; data: unknown }) => void): WebSocket => {

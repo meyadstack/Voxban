@@ -236,6 +236,18 @@ export interface ReleaseInfo {
   apkDownloadUrl?: string | null;
   windowsDownloadUrl?: string | null;
   macDownloadUrl?: string | null;
+  recommendedDownloadUrl?: string | null;
+  recommendedAssetName?: string | null;
+}
+
+export interface UpdateInstallProgress {
+  phase: "idle" | "downloading" | "installing" | "restarting" | "ready" | "error";
+  version: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  message: string;
+  filePath?: string | null;
+  error?: string | null;
 }
 
 export const NOTE_COLORS: Array<{ name: string; num: number; hex: string }> = [
