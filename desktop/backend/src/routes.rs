@@ -19,10 +19,15 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::File;
@@ -34,6 +39,13 @@ use tower_http::cors::{Any, CorsLayer};
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../frontend/dist"]
 struct EmbeddedFrontend;
+
+pub struct PasswordShareRecord {
+    pub encrypted_blob: Option<String>,
+    pub expires_at: i64,
+    pub claimed: bool,
+    pub burned: bool,
+}
 
 pub struct AppContext {
     pub port: u16,
@@ -47,6 +59,9 @@ pub struct AppContext {
     pub frontend_dir: Option<PathBuf>,
     pub unlocked_vault_passphrase: RwLock<Option<String>>,
     pub update_progress: Arc<RwLock<updater::UpdateInstallProgress>>,
+    pub gemma_progress: Arc<RwLock<ai::GemmaDownloadProgress>>,
+    pub password_shares: RwLock<HashMap<String, PasswordShareRecord>>,
+    pub consumed_shares: RwLock<HashSet<String>>,
 }
 
 impl AppContext {
@@ -73,6 +88,12 @@ impl AppContext {
             frontend_dir,
             unlocked_vault_passphrase: RwLock::new(None),
             update_progress: Arc::new(RwLock::new(updater::UpdateInstallProgress::default())),
+            gemma_progress: Arc::new(RwLock::new(ai::GemmaDownloadProgress {
+                phase: "idle".into(),
+                ..Default::default()
+            })),
+            password_shares: RwLock::new(HashMap::new()),
+            consumed_shares: RwLock::new(HashSet::new()),
         })
     }
 
@@ -99,6 +120,8 @@ pub fn build_router(ctx: Arc<AppContext>) -> Router {
         .route("/api/pair/unlink", post(pair_unlink))
         .route("/api/sync", post(sync_from_phone))
         .route("/api/ai/chat", post(ai_chat))
+        .route("/api/ai/gemma/status", get(ai_gemma_status))
+        .route("/api/ai/gemma/download", post(ai_gemma_download))
         .route("/api/music/search", get(music_search))
         .route("/api/music/radio", get(music_radio))
         .route("/api/music/stream/{video_id}", get(music_stream))
@@ -114,6 +137,11 @@ pub fn build_router(ctx: Arc<AppContext>) -> Router {
         .route("/api/vault/biometric/unlock", post(vault_biometric_unlock))
         .route("/api/vault/biometric/enable", post(vault_biometric_enable))
         .route("/api/vault/biometric/disable", post(vault_biometric_disable))
+        .route("/api/vault/share/create", post(vault_share_create))
+        .route("/api/vault/share/status/{id}", get(vault_share_status))
+        .route("/api/vault/share/claim/{id}", get(vault_share_claim))
+        .route("/api/vault/share/{id}", delete(vault_share_burn))
+        .route("/api/vault/share/import", post(vault_share_import))
         .route("/api/support/format", post(support_format))
         .route("/api/updates/check", get(updates_check))
         .route("/api/updates/install", post(updates_install))
@@ -374,6 +402,41 @@ async fn ai_chat(
         "engine": reply.engine,
         "state": state_clone,
     }))
+}
+
+async fn ai_gemma_status(State(ctx): State<Arc<AppContext>>) -> impl IntoResponse {
+    let status = ai::check_gemma_status(&ctx.gemma_progress).await;
+    Json(status)
+}
+
+#[derive(Deserialize)]
+struct GemmaDownloadReq {
+    #[serde(default)]
+    model: String,
+}
+
+async fn ai_gemma_download(
+    State(ctx): State<Arc<AppContext>>,
+    Json(req): Json<GemmaDownloadReq>,
+) -> impl IntoResponse {
+    let model = if req.model.trim().is_empty() {
+        "gemma4:e2b".to_string()
+    } else {
+        req.model.trim().to_string()
+    };
+    {
+        let cur = ctx.gemma_progress.read().await;
+        if cur.phase == "downloading" && cur.model == model {
+            return Json(json!({ "ok": true, "progress": cur.clone() }));
+        }
+    }
+    let prog = ctx.gemma_progress.clone();
+    tokio::spawn(async move {
+        ai::download_gemma_background(model, prog).await;
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    let snap = ctx.gemma_progress.read().await.clone();
+    Json(json!({ "ok": true, "progress": snap }))
 }
 
 // ---------------------------------------------------------------- Music Search, Cached Stream, & Download
@@ -936,6 +999,328 @@ async fn vault_generate() -> impl IntoResponse {
         .map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char)
         .collect();
     Json(json!({ "password": pw }))
+}
+
+// ---------------------------------------------------------------- One-Time QR Password Sharing
+
+#[derive(Serialize, Deserialize)]
+struct SharedLoginPayload {
+    title: String,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    password: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    notes: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultShareCreateReq {
+    entry: PasswordEntry,
+    #[serde(default)]
+    mode: String, // "lan" | "direct"
+    #[serde(default = "default_share_ttl")]
+    ttl_sec: i64,
+}
+
+fn default_share_ttl() -> i64 {
+    120
+}
+
+fn aes_gcm_encrypt_b64(plain: &[u8], key: &[u8; 32]) -> Result<String, String> {
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    let mut iv = [0u8; 12];
+    rand::thread_rng().fill(&mut iv);
+    let ct = cipher
+        .encrypt(Nonce::from_slice(&iv), plain)
+        .map_err(|e| e.to_string())?;
+    let mut combined = Vec::with_capacity(12 + ct.len());
+    combined.extend_from_slice(&iv);
+    combined.extend_from_slice(&ct);
+    Ok(URL_SAFE_NO_PAD.encode(combined))
+}
+
+fn aes_gcm_decrypt_b64(encoded: &str, key: &[u8]) -> Result<Vec<u8>, String> {
+    let combined = URL_SAFE_NO_PAD
+        .decode(encoded.trim())
+        .map_err(|_| "Corrupted ciphertext".to_string())?;
+    if combined.len() <= 12 {
+        return Err("Ciphertext too short".into());
+    }
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "Invalid encryption key".to_string())?;
+    cipher
+        .decrypt(Nonce::from_slice(&combined[..12]), &combined[12..])
+        .map_err(|_| "Decryption failed".to_string())
+}
+
+async fn vault_share_create(
+    State(ctx): State<Arc<AppContext>>,
+    Json(req): Json<VaultShareCreateReq>,
+) -> impl IntoResponse {
+    if ctx.unlocked_vault_passphrase.read().await.is_none() {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "ok": false, "error": "Unlock your vault first." })),
+        );
+    }
+    let mut key = [0u8; 32];
+    let mut id_bytes = [0u8; 16];
+    {
+        let mut rng = rand::thread_rng();
+        rng.fill(&mut key);
+        rng.fill(&mut id_bytes);
+    }
+    let share_id = URL_SAFE_NO_PAD.encode(id_bytes);
+    let key_b64 = URL_SAFE_NO_PAD.encode(key);
+    let ttl = req.ttl_sec.clamp(30, 600);
+    let expires_at = now_ms() + ttl * 1000;
+
+    let payload = SharedLoginPayload {
+        title: req.entry.title,
+        username: req.entry.username,
+        password: req.entry.password,
+        url: req.entry.url,
+        notes: req.entry.notes,
+    };
+    let plain = match serde_json::to_vec(&payload) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))),
+    };
+    let encrypted = match aes_gcm_encrypt_b64(&plain, &key) {
+        Ok(d) => d,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e }))),
+    };
+
+    let host = crate::sync::detect_lan_ip();
+    let use_lan = req.mode.eq_ignore_ascii_case("lan") && host != "127.0.0.1";
+    let (actual_mode, qr_url) = if use_lan {
+        let mut map = ctx.password_shares.write().await;
+        let now = now_ms();
+        map.retain(|_, rec| !rec.burned && rec.expires_at > now);
+        map.insert(
+            share_id.clone(),
+            PasswordShareRecord {
+                encrypted_blob: Some(encrypted),
+                expires_at,
+                claimed: false,
+                burned: false,
+            },
+        );
+        let path = format!("/api/vault/share/claim/{share_id}");
+        let url = format!(
+            "voxban://pwshare?v=2&mode=lan&host={}&port={}&path={}&id={}&k={}&exp={}",
+            urlencoding::encode(&host),
+            ctx.port,
+            urlencoding::encode(&path),
+            urlencoding::encode(&share_id),
+            urlencoding::encode(&key_b64),
+            expires_at,
+        );
+        ("lan", url)
+    } else {
+        let url = format!(
+            "voxban://pwshare?v=2&mode=direct&id={}&exp={}&k={}&d={}",
+            urlencoding::encode(&share_id),
+            expires_at,
+            urlencoding::encode(&key_b64),
+            urlencoding::encode(&encrypted),
+        );
+        ("direct", url)
+    };
+
+    let qr_svg = crate::sync::render_qr_svg(&qr_url);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "shareId": share_id,
+            "mode": actual_mode,
+            "qrUrl": qr_url,
+            "qrSvg": qr_svg,
+            "expiresAt": expires_at,
+        })),
+    )
+}
+
+async fn vault_share_status(
+    State(ctx): State<Arc<AppContext>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let map = ctx.password_shares.read().await;
+    match map.get(&id) {
+        Some(rec) => Json(json!({
+            "ok": true,
+            "claimed": rec.claimed,
+            "burned": rec.burned || rec.claimed || now_ms() > rec.expires_at,
+            "expired": now_ms() > rec.expires_at,
+        })),
+        None => Json(json!({ "ok": true, "claimed": false, "burned": true, "expired": true })),
+    }
+}
+
+async fn vault_share_claim(
+    State(ctx): State<Arc<AppContext>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let mut map = ctx.password_shares.write().await;
+    let Some(rec) = map.get_mut(&id) else {
+        return (
+            StatusCode::GONE,
+            Json(json!({ "ok": false, "error": "This one-time QR code was already used or expired." })),
+        );
+    };
+    if rec.burned || rec.claimed || now_ms() > rec.expires_at {
+        rec.encrypted_blob = None;
+        rec.burned = true;
+        return (
+            StatusCode::GONE,
+            Json(json!({ "ok": false, "error": "This one-time QR code was already claimed and burned." })),
+        );
+    }
+    let blob = rec.encrypted_blob.take().unwrap_or_default();
+    rec.claimed = true;
+    rec.burned = true;
+    (StatusCode::OK, Json(json!({ "ok": true, "d": blob })))
+}
+
+async fn vault_share_burn(
+    State(ctx): State<Arc<AppContext>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let mut map = ctx.password_shares.write().await;
+    if let Some(rec) = map.get_mut(&id) {
+        rec.encrypted_blob = None;
+        rec.burned = true;
+    }
+    Json(json!({ "ok": true }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultShareImportReq {
+    qr_text: String,
+}
+
+async fn vault_share_import(
+    State(ctx): State<Arc<AppContext>>,
+    Json(req): Json<VaultShareImportReq>,
+) -> impl IntoResponse {
+    let raw = req.qr_text.trim();
+    if !(raw.to_lowercase().starts_with("voxban://pwshare") || raw.to_lowercase().starts_with("voicekanban://pwshare")) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "Not a valid Voxban one-time password QR link." })),
+        );
+    }
+    let query = raw.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let mut params: HashMap<String, String> = HashMap::new();
+    for pair in query.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let dk = urlencoding::decode(k).map(|s| s.into_owned()).unwrap_or_else(|_| k.to_string());
+            let dv = urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_else(|_| v.to_string());
+            params.insert(dk, dv);
+        }
+    }
+    let share_id = params.get("id").cloned().unwrap_or_default();
+    let key_b64 = params.get("k").cloned().unwrap_or_default();
+    let mode = params.get("mode").cloned().unwrap_or_default().to_lowercase();
+    let exp = params.get("exp").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+
+    if share_id.is_empty() || key_b64.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Incomplete one-time share code." })));
+    }
+    if exp > 0 && now_ms() > exp {
+        return (StatusCode::GONE, Json(json!({ "ok": false, "error": "This one-time QR code has expired." })));
+    }
+    if ctx.consumed_shares.read().await.contains(&share_id) {
+        return (StatusCode::GONE, Json(json!({ "ok": false, "error": "This one-time QR code was already imported and burned." })));
+    }
+
+    let key = match URL_SAFE_NO_PAD.decode(key_b64.trim()) {
+        Ok(k) if k.len() == 32 => k,
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Invalid encryption key." }))),
+    };
+
+    let mut burned_on_sender = false;
+    let encrypted_blob = if mode == "lan" {
+        let host = params.get("host").cloned().unwrap_or_default();
+        let port = params.get("port").and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
+        let path = params
+            .get("path")
+            .filter(|p| p.starts_with('/'))
+            .cloned()
+            .unwrap_or_else(|| format!("/pw-share/{share_id}"));
+        if host.is_empty() || port == 0 {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Invalid sender LAN address." })));
+        }
+        let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build() {
+            Ok(c) => c,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))),
+        };
+        let resp = match client.get(format!("http://{host}:{port}{path}")).send().await {
+            Ok(r) => r,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "ok": false, "error": "Could not reach sender on Wi-Fi. Ask them to use Any Network (Offline) mode." })),
+                );
+            }
+        };
+        if resp.status() == StatusCode::GONE {
+            return (StatusCode::GONE, Json(json!({ "ok": false, "error": "This one-time QR code was already claimed and burned." })));
+        }
+        let val: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(_) => return (StatusCode::BAD_GATEWAY, Json(json!({ "ok": false, "error": "Invalid response from sender." }))),
+        };
+        let Some(d) = val.get("d").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) else {
+            let msg = val.get("error").and_then(|v| v.as_str()).unwrap_or("Could not claim shared password.");
+            return (StatusCode::GONE, Json(json!({ "ok": false, "error": msg })));
+        };
+        burned_on_sender = true;
+        d.to_string()
+    } else if mode == "direct" {
+        match params.get("d").filter(|s| !s.is_empty()) {
+            Some(d) => d.clone(),
+            None => return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Missing encrypted payload." }))),
+        }
+    } else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Unsupported share mode." })));
+    };
+
+    let plain = match aes_gcm_decrypt_b64(&encrypted_blob, &key) {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": e }))),
+    };
+    let payload: SharedLoginPayload = match serde_json::from_slice(&plain) {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": "Decrypted payload unreadable." }))),
+    };
+
+    ctx.consumed_shares.write().await.insert(share_id);
+    let now = now_ms();
+    let entry = PasswordEntry {
+        id: crate::models::new_id("pw"),
+        title: if payload.title.trim().is_empty() { "Shared login".into() } else { payload.title.trim().to_string() },
+        username: payload.username.trim().to_string(),
+        password: payload.password,
+        url: payload.url.trim().to_string(),
+        notes: payload.notes.trim().to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "entry": entry,
+            "burnedOnSender": burned_on_sender,
+        })),
+    )
 }
 
 // ---------------------------------------------------------------- Support Tickets & Updates

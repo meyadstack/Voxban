@@ -502,7 +502,15 @@ private fun OnboardingScreen(vm: MainViewModel) {
     var userName by rememberSaveable { mutableStateOf(app.settings.userName) }
     var language by rememberSaveable { mutableStateOf(app.settings.language.ifBlank { AppLanguage.EN.code }) }
     var engine by rememberSaveable { mutableStateOf(Engine.GEMINI) }
+    var gemmaModelId by rememberSaveable { mutableStateOf(com.voicekanban.app.ai.Gemma4Catalog.E2B_ID) }
     var key by rememberSaveable { mutableStateOf("") }
+    val ctx = LocalContext.current
+    val notifLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { _ ->
+        com.voicekanban.app.ai.Gemma4DownloadManager.startDownload(ctx, gemmaModelId)
+        vm.completeOnboarding(userName, language, engine, key, gemmaModelId)
+    }
 
     val icons: Map<Engine, ImageVector> = mapOf(
         Engine.BUILT_IN to Icons.Rounded.Bolt, Engine.ON_DEVICE to Icons.Rounded.Memory,
@@ -511,6 +519,7 @@ private fun OnboardingScreen(vm: MainViewModel) {
     )
     val blurbs = mapOf(
         Engine.BUILT_IN to "Works instantly with no key or download. Handles commands, deadlines and board management.",
+        Engine.ON_DEVICE to "Google's Gemma 4 running offline on your phone with full tool support. Downloads in the background with a progress notification.",
         Engine.OPENAI to "Cloud model via your OpenAI API key.",
         Engine.GEMINI to "Cloud model via your Google AI Studio key (has a free tier).",
         Engine.CLAUDE to "Anthropic’s most capable model via your API key.",
@@ -795,17 +804,52 @@ private fun OnboardingScreen(vm: MainViewModel) {
                                     Spacer(Modifier.height(10.dp))
                                     InputField(key, { key = it }, "Paste your ${e.label} API key")
                                     Text("You can test the key and pick a model in Settings.", fontSize = 11.sp, color = subFg, modifier = Modifier.padding(top = 4.dp))
+                                } else if (sel && e == Engine.ON_DEVICE) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        com.voicekanban.app.ai.Gemma4Catalog.models.forEach { spec ->
+                                            val chosen = spec.id == gemmaModelId
+                                            Row(
+                                                Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                                                    .background(if (chosen) c.onLime else c.surface)
+                                                    .clickable { gemmaModelId = spec.id }
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Column {
+                                                    Text(spec.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (chosen) c.limeTile else c.ink)
+                                                    Text(spec.shortName, fontSize = 10.sp, color = if (chosen) c.limeTile.copy(alpha = 0.8f) else c.inkSecondary)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Text("Starts downloading in the background with notification progress bar.", fontSize = 11.sp, color = subFg, modifier = Modifier.padding(top = 6.dp))
                                 }
                             }
                         }
 
                         Button(
-                            onClick = { vm.completeOnboarding(userName, language, engine, key) },
+                            onClick = {
+                                if (engine == Engine.ON_DEVICE && com.voicekanban.app.ai.Gemma4DownloadManager.readyModelPath(ctx, gemmaModelId) == null) {
+                                    if (android.os.Build.VERSION.SDK_INT >= 33 && !com.voicekanban.app.reminders.Reminders.canPost(ctx)) {
+                                        notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        com.voicekanban.app.ai.Gemma4DownloadManager.startDownload(ctx, gemmaModelId)
+                                        vm.completeOnboarding(userName, language, engine, key, gemmaModelId)
+                                    }
+                                } else {
+                                    vm.completeOnboarding(userName, language, engine, key, gemmaModelId)
+                                }
+                            },
                             Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 52.dp),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
                         ) {
-                            Text("Open my board", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                if (engine == Engine.ON_DEVICE && com.voicekanban.app.ai.Gemma4DownloadManager.readyModelPath(ctx, gemmaModelId) == null) "Download Gemma 4 & open"
+                                else "Open my board",
+                                fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                            )
                         }
                     }
                 }

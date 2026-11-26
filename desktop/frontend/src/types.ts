@@ -55,6 +55,7 @@ export interface Note {
   color: number;
   pinned: boolean;
   source: string;
+  images?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -174,11 +175,37 @@ export interface Settings {
   engine: string;
   themeMode: string;
   cloudModels: Record<string, string>;
+  gemmaModelId?: string;
   currency: string;
   weightKg: number;
   autoCheckUpdates: boolean;
   dismissedUpdateTag: string;
   speakReplies: boolean;
+}
+
+export interface GemmaDownloadProgress {
+  phase: "idle" | "downloading" | "ready" | "error";
+  model: string;
+  completedBytes: number;
+  totalBytes: number;
+  status: string;
+  error?: string | null;
+}
+
+export interface GemmaStatusResponse {
+  ollamaRunning: boolean;
+  installedModels: string[];
+  progress: GemmaDownloadProgress;
+}
+
+export interface VaultShareCreateResponse {
+  ok: boolean;
+  shareId?: string;
+  mode?: "lan" | "direct";
+  qrUrl?: string;
+  qrSvg?: string;
+  expiresAt?: number;
+  error?: string;
 }
 
 export interface AppState {

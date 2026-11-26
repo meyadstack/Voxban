@@ -177,7 +177,7 @@ class Repository private constructor(private val context: Context) {
     private fun AppState.sanitized(): AppState {
         var s = if (workspace.boards.isEmpty()) default().copy(settings = settings, chat = chat, sessions = sessions, notes = notes, voiceChat = voiceChat) else this
         if (s.workspace.boards.none { it.id == s.workspace.activeBoardId }) s = s.copy(workspace = s.workspace.copy(activeBoardId = s.workspace.boards.first().id))
-        // Only Gemini, ChatGPT and Claude are offered now: retired engines move to Gemini.
+        // Keep supported engines (Gemini, Gemma 4 On-Device, ChatGPT, Claude); retired engines move to Gemini.
         if (s.settings.engine !in Engine.selectable) s = s.copy(settings = s.settings.copy(engine = Engine.GEMINI))
         // The old single conversation becomes the first chat session.
         if (s.chat.isNotEmpty()) {
@@ -287,10 +287,27 @@ class Repository private constructor(private val context: Context) {
         _vault.value = next
     }
 
+    // --- One-time password share replay protection ---------------------------
+
+    @Synchronized
+    fun isPasswordShareConsumed(shareId: String): Boolean {
+        val set = secrets.getStringSet(CONSUMED_SHARES, emptySet()) ?: emptySet()
+        return shareId in set
+    }
+
+    @Synchronized
+    fun markPasswordShareConsumed(shareId: String) {
+        val cur = (secrets.getStringSet(CONSUMED_SHARES, emptySet()) ?: emptySet()).toMutableSet()
+        if (cur.size > 200) cur.clear()
+        cur += shareId
+        secrets.edit().putStringSet(CONSUMED_SHARES, cur).apply()
+    }
+
     companion object {
         private const val TAG = "Repository"
         const val ELEVENLABS = "ELEVENLABS"
         private const val VAULT = "VAULT_V1"
+        private const val CONSUMED_SHARES = "CONSUMED_PW_SHARES_V1"
 
         fun sessionTitle(firstMessage: String?): String =
             firstMessage?.trim()?.replace(Regex("""\s+"""), " ")?.let { if (it.length > 42) it.take(40).trimEnd() + "…" else it }?.ifBlank { null } ?: "New chat"

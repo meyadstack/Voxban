@@ -1,11 +1,14 @@
 import type {
   AppState,
   DownloadedTrack,
+  GemmaDownloadProgress,
+  GemmaStatusResponse,
   PairInfoResponse,
   PasswordEntry,
   ReleaseInfo,
   SupportTicket,
   UpdateInstallProgress,
+  VaultShareCreateResponse,
   WorkoutTrack,
 } from "./types";
 
@@ -67,11 +70,17 @@ export const api = {
   pairRefresh: () => req<{ ok: boolean; session: PairInfoResponse["session"] }>("/api/pair/refresh", { method: "POST" }),
   pairUnlink: () => req<{ ok: boolean; session: PairInfoResponse["session"] }>("/api/pair/unlink", { method: "POST" }),
 
-  // AI assistant
+  // AI assistant & local Gemma 4 background downloader
   chat: (prompt: string) =>
     req<{ reply: string; changes: string[]; engine: string; state: AppState }>("/api/ai/chat", {
       method: "POST",
       body: JSON.stringify({ prompt }),
+    }),
+  gemmaStatus: () => req<GemmaStatusResponse>("/api/ai/gemma/status"),
+  gemmaDownload: (model: string) =>
+    req<{ ok: boolean; progress: GemmaDownloadProgress }>("/api/ai/gemma/download", {
+      method: "POST",
+      body: JSON.stringify({ model }),
     }),
 
   // Music search, streaming & offline downloading
@@ -122,6 +131,22 @@ export const api = {
   vaultBiometricDisable: () =>
     req<{ ok: boolean; biometric?: BiometricStatus }>("/api/vault/biometric/disable", { method: "POST" }),
   vaultGenerate: () => req<{ password: string }>("/api/vault/generate", { method: "POST" }),
+  vaultShareCreate: (entry: PasswordEntry, mode: "lan" | "direct", ttlSec = 120) =>
+    req<VaultShareCreateResponse>("/api/vault/share/create", {
+      method: "POST",
+      body: JSON.stringify({ entry, mode, ttlSec }),
+    }),
+  vaultShareStatus: (id: string) =>
+    req<{ ok: boolean; claimed: boolean; burned: boolean; expired: boolean }>(
+      `/api/vault/share/status/${encodeURIComponent(id)}`,
+    ),
+  vaultShareBurn: (id: string) =>
+    req<{ ok: boolean }>(`/api/vault/share/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  vaultShareImport: (qrText: string) =>
+    req<{ ok: boolean; entry?: PasswordEntry; burnedOnSender?: boolean; error?: string }>("/api/vault/share/import", {
+      method: "POST",
+      body: JSON.stringify({ qrText }),
+    }),
 
   // Support tickets -> abdullahmeyad7@gmail.com
   formatSupportTicket: (ticket: SupportTicket, save: boolean, isFollowUp = false) =>

@@ -24,6 +24,7 @@ class VoiceKanbanApp : Application() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        com.voicekanban.app.ai.Gemma4DownloadManager.refresh(this)
         val repo = Repository.get(this)
         // Keep reminders, the widget and the status-bar shortcut in sync with the data.
         repo.state
@@ -48,7 +49,10 @@ class VoiceKanbanApp : Application() {
             description = "Alerts before a card’s deadline"
             enableVibration(true)
         })
-        nm.deleteNotificationChannel(CHANNEL_DOWNLOADS)
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_DOWNLOADS, "AI model downloads", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Background download progress for on-device Gemma 4 models"
+            setShowBadge(false); setSound(null, null); enableVibration(false)
+        })
         nm.createNotificationChannel(NotificationChannel(CHANNEL_WORKOUT, "Workout reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Your daily reminder to move"
         })

@@ -1,48 +1,104 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Calendar,
   Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
   Fingerprint,
+  Flame,
   KeyRound,
   Lock,
   Plus,
+  QrCode,
   RefreshCw,
   ShieldCheck,
   Timer,
   Trash2,
   Unlock,
+  Wallet,
+  X,
 } from "lucide-react";
 import { api, type BiometricStatus } from "../api";
-import type { AppState, PasswordEntry, Transaction, TxType } from "../types";
+import type { AppState, PasswordEntry, Transaction, TxType, VaultShareCreateResponse } from "../types";
 import { formatDuration, newId } from "../types";
 
 const EXPENSE_CATS = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Rent", "Health", "Education", "Other"];
 const INCOME_CATS = ["Salary", "Business", "Freelance", "Investment", "Gift", "Other"];
 
+function dayKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState: (n: AppState) => void }) {
   const sym = state.settings.currency || "$";
+  const now = new Date();
+  const [viewMode, setViewMode] = useState<"overview" | "calendar">("overview");
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth()); // 0..11
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
   const [type, setType] = useState<TxType>("EXPENSE");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("Food");
   const [note, setNote] = useState("");
 
-  const income = state.transactions.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
-  const expense = state.transactions.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const monthTransactions = useMemo(
+    () =>
+      state.transactions.filter((t) => {
+        const d = new Date(t.at);
+        return d.getFullYear() === calYear && d.getMonth() === calMonth;
+      }),
+    [state.transactions, calYear, calMonth],
+  );
+
+  const byDay = useMemo(() => {
+    const map: Record<string, Transaction[]> = {};
+    for (const t of monthTransactions) {
+      const k = dayKey(t.at);
+      (map[k] ||= []).push(t);
+    }
+    return map;
+  }, [monthTransactions]);
+
+  const visibleTx = selectedDay ? byDay[selectedDay] || [] : monthTransactions;
+  const income = monthTransactions.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  const expense = monthTransactions.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+
+  const shiftMonth = (delta: number) => {
+    const d = new Date(calYear, calMonth + delta, 1);
+    setCalYear(d.getFullYear());
+    setCalMonth(d.getMonth());
+    setSelectedDay(null);
+  };
+
+  const monthTitle = new Date(calYear, calMonth, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const firstDow = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // Monday = 0
+  const todayKey = dayKey(Date.now());
 
   const addTx = () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) return;
-    const now = Date.now();
+    const nowMs = Date.now();
+    let atMs = nowMs;
+    if (selectedDay) {
+      const [y, m, dd] = selectedDay.split("-").map(Number);
+      const cur = new Date();
+      atMs = new Date(y, m - 1, dd, cur.getHours(), cur.getMinutes()).getTime();
+    }
     const tx: Transaction = {
       id: newId("tx"),
       amount: val,
       type,
       category,
       note: note.trim(),
-      at: now,
-      createdAt: now,
+      at: atMs,
+      createdAt: nowMs,
     };
     onSaveState({ ...state, transactions: [tx, ...state.transactions] });
     setAmount("");
@@ -51,10 +107,45 @@ export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState
 
   return (
     <div className="space-y-5">
-      <h2 className="text-2xl font-bold tracking-tight">Money Manager</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold tracking-tight">Money Manager</h2>
+          <div className="flex items-center gap-1 vk-well px-2 py-1">
+            <button onClick={() => shiftMonth(-1)} className="p-1 rounded-full hover:bg-black/10 bg-transparent border-0 cursor-pointer">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-semibold px-2 min-w-[120px] text-center">{monthTitle}</span>
+            <button onClick={() => shiftMonth(1)} className="p-1 rounded-full hover:bg-black/10 bg-transparent border-0 cursor-pointer">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => {
+              setViewMode("overview");
+              setSelectedDay(null);
+            }}
+            className={`px-3.5 py-1.5 text-xs rounded-full cursor-pointer border inline-flex items-center gap-1.5 ${
+              viewMode === "overview" ? "vk-btn-lime border-transparent" : "vk-btn-outline"
+            }`}
+          >
+            <Wallet className="w-3.5 h-3.5" /> Overview
+          </button>
+          <button
+            onClick={() => setViewMode("calendar")}
+            className={`px-3.5 py-1.5 text-xs rounded-full cursor-pointer border inline-flex items-center gap-1.5 ${
+              viewMode === "calendar" ? "vk-btn-lime border-transparent" : "vk-btn-outline"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" /> Calendar
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="vk-card p-5">
-          <div className="text-xs" style={{ color: "var(--vk-ink-2)" }}>Balance</div>
+          <div className="text-xs" style={{ color: "var(--vk-ink-2)" }}>Balance ({monthTitle})</div>
           <div className="text-2xl font-bold mt-1">{sym}{(income - expense).toLocaleString()}</div>
         </div>
         <div className="vk-card p-5">
@@ -71,8 +162,70 @@ export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState
         </div>
       </div>
 
+      {/* Monthly Money Calendar */}
+      {viewMode === "calendar" && (
+        <div className="vk-card p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold">Daily Income &amp; Expense Calendar</div>
+            {selectedDay && (
+              <button onClick={() => setSelectedDay(null)} className="vk-btn-outline px-3 py-1 text-xs cursor-pointer">
+                Show full month
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold" style={{ color: "var(--vk-ink-3)" }}>
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              <div key={d} className="py-1">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {Array.from({ length: firstDow }).map((_, i) => (
+              <div key={`pad-${i}`} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, idx) => {
+              const day = idx + 1;
+              const k = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const txs = byDay[k] || [];
+              const dInc = txs.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+              const dExp = txs.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+              const isSel = selectedDay === k;
+              const isToday = todayKey === k;
+              return (
+                <button
+                  key={k}
+                  onClick={() => setSelectedDay(isSel ? null : k)}
+                  className="p-2 rounded-2xl min-h-[68px] flex flex-col items-start justify-between text-left cursor-pointer transition-all"
+                  style={{
+                    background: isSel ? "#EAFF87" : txs.length > 0 ? "var(--vk-surface)" : "transparent",
+                    color: isSel ? "#1B201C" : "var(--vk-ink)",
+                    border: isToday && !isSel ? "1.5px solid var(--vk-ink)" : "1px solid var(--vk-border)",
+                  }}
+                >
+                  <span className="text-xs font-semibold">{day}</span>
+                  {txs.length > 0 && (
+                    <div className="w-full space-y-0.5 text-[10px] font-medium truncate">
+                      {dInc > 0 && (
+                        <div style={{ color: isSel ? "#1B201C" : "var(--vk-low)" }}>+{sym}{dInc.toLocaleString()}</div>
+                      )}
+                      {dExp > 0 && (
+                        <div style={{ color: isSel ? "#1B201C" : "var(--vk-danger)" }}>-{sym}{dExp.toLocaleString()}</div>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Add transaction */}
       <div className="vk-card p-5 space-y-3">
+        {selectedDay && (
+          <div className="text-xs font-medium" style={{ color: "var(--vk-ink-2)" }}>
+            Logging for selected date: <b>{selectedDay}</b>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2 items-center">
           {(["EXPENSE", "INCOME"] as TxType[]).map((t) => (
             <button
@@ -121,12 +274,12 @@ export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState
 
       {/* List */}
       <div className="vk-card p-4 space-y-2">
-        {state.transactions.length === 0 ? (
+        {visibleTx.length === 0 ? (
           <p className="text-xs py-6 text-center" style={{ color: "var(--vk-ink-3)" }}>
-            No transactions yet.
+            {selectedDay ? `No transactions on ${selectedDay}.` : `No transactions in ${monthTitle} yet.`}
           </p>
         ) : (
-          state.transactions.map((t) => (
+          visibleTx.map((t) => (
             <div
               key={t.id}
               className="p-3 rounded-2xl flex items-center justify-between gap-2"
@@ -135,7 +288,7 @@ export function MoneyView({ state, onSaveState }: { state: AppState; onSaveState
               <div>
                 <div className="text-sm font-medium">{t.category}</div>
                 <div className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
-                  {t.note || new Date(t.at).toLocaleDateString()}
+                  {t.note ? `${t.note} · ` : ""}{new Date(t.at).toLocaleDateString()}
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -179,6 +332,19 @@ export function VaultView() {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // One-time QR sharing modals
+  const [sharingEntry, setSharingEntry] = useState<PasswordEntry | null>(null);
+  const [shareMode, setShareMode] = useState<"lan" | "direct">("lan");
+  const [shareTtl, setShareTtl] = useState<number>(120);
+  const [shareData, setShareData] = useState<VaultShareCreateResponse | null>(null);
+  const [shareBurned, setShareBurned] = useState(false);
+  const [shareClaimed, setShareClaimed] = useState(false);
+  const [shareRemaining, setShareRemaining] = useState(120);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCode, setImportCode] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importErr, setImportErr] = useState<string | null>(null);
+
   const [title, setTitle] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -215,7 +381,6 @@ export function VaultView() {
         if (r.biometric) {
           setBiometric(r.biometric);
           setEnrollOnUnlock(!r.exists && r.biometric.available);
-          // Automatically prompt Touch ID / Windows Hello Fingerprint on entering Vault - no extra unlock button needed!
           if (r.exists && r.biometric.available && r.biometric.enrolled && !autoPromptedRef.current) {
             autoPromptedRef.current = true;
             void unlockWithBiometric(r.biometric.label);
@@ -224,6 +389,59 @@ export function VaultView() {
       })
       .catch(() => setExists(false));
   }, [unlockWithBiometric]);
+
+  const generateShareQr = useCallback(async (entry: PasswordEntry, mode: "lan" | "direct", ttl: number) => {
+    setShareBurned(false);
+    setShareClaimed(false);
+    try {
+      const res = await api.vaultShareCreate(entry, mode, ttl);
+      setShareData(res);
+      setShareRemaining(ttl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sharingEntry) return;
+    void generateShareQr(sharingEntry, shareMode, shareTtl);
+  }, [sharingEntry, shareMode, shareTtl, generateShareQr]);
+
+  useEffect(() => {
+    if (!sharingEntry || !shareData?.shareId || shareBurned) return;
+    const id = setInterval(() => {
+      const left = Math.max(0, Math.floor(((shareData.expiresAt || 0) - Date.now()) / 1000));
+      setShareRemaining(left);
+      if (left <= 0) {
+        setShareBurned(true);
+        return;
+      }
+      if (shareData.mode === "lan" && shareData.shareId) {
+        void api
+          .vaultShareStatus(shareData.shareId)
+          .then((st) => {
+            if (st.claimed) {
+              setShareClaimed(true);
+              setShareBurned(true);
+            } else if (st.burned || st.expired) {
+              setShareBurned(true);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 600);
+    return () => clearInterval(id);
+  }, [sharingEntry, shareData, shareBurned]);
+
+  const closeShareModal = () => {
+    if (shareData?.shareId) {
+      void api.vaultShareBurn(shareData.shareId).catch(() => {});
+    }
+    setSharingEntry(null);
+    setShareData(null);
+    setShareBurned(false);
+    setShareClaimed(false);
+  };
 
   const unlock = async () => {
     if (!passphrase.trim()) return;
@@ -311,6 +529,27 @@ export function VaultView() {
     setUrl("");
   };
 
+  const importSharedCode = async () => {
+    if (!importCode.trim()) return;
+    setImportBusy(true);
+    setImportErr(null);
+    try {
+      const res = await api.vaultShareImport(importCode.trim());
+      if (res.ok && res.entry) {
+        await persist([res.entry, ...entries]);
+        setBioNotice(`Imported shared login “${res.entry.title}”${res.burnedOnSender ? " (burned on sender)" : ""}.`);
+        setImportCode("");
+        setImportOpen(false);
+      } else {
+        setImportErr(res.error || "Could not import shared password.");
+      }
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   if (!unlocked) {
     const bioEnrolled = Boolean(exists && biometric.available && biometric.enrolled);
     return (
@@ -387,7 +626,16 @@ export function VaultView() {
           <ShieldCheck className="w-5 h-5" style={{ color: "var(--vk-low)" }} />
           <h2 className="text-2xl font-bold tracking-tight">Password Vault</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setImportOpen(true);
+              setImportErr(null);
+            }}
+            className="vk-btn-outline px-3.5 py-1.5 text-xs cursor-pointer inline-flex items-center gap-1.5"
+          >
+            <QrCode className="w-3.5 h-3.5" /> Receive 1-Time Share
+          </button>
           {biometric.available && (
             <button
               onClick={() => void toggleBiometric()}
@@ -455,6 +703,13 @@ export function VaultView() {
             </div>
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => setSharingEntry(e)}
+                className="vk-btn-lime px-3 py-1.5 text-xs cursor-pointer inline-flex items-center gap-1"
+                title="Share with a friend via one-time QR code"
+              >
+                <QrCode className="w-3.5 h-3.5" /> 1-Time QR
+              </button>
+              <button
                 onClick={() => setRevealed((r) => ({ ...r, [e.id]: !r[e.id] }))}
                 className="vk-btn-outline p-2 cursor-pointer"
                 title="Show / hide"
@@ -482,6 +737,164 @@ export function VaultView() {
           </div>
         ))}
       </div>
+
+      {/* Share 1-Time QR Modal */}
+      {sharingEntry && (
+        <div
+          onClick={closeShareModal}
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="vk-card max-w-md w-full p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base">Share “{sharingEntry.title}”</h3>
+                <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
+                  Encrypted one-time QR code for a friend's Voxban Vault
+                </p>
+              </div>
+              <button onClick={closeShareModal} className="p-1.5 rounded-full hover:bg-black/10 bg-transparent border-0 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShareMode("lan")}
+                className={`flex-1 py-1.5 text-xs rounded-full cursor-pointer border ${
+                  shareMode === "lan" ? "vk-btn-lime border-transparent" : "vk-btn-outline"
+                }`}
+              >
+                Same Wi-Fi (Instant Burn)
+              </button>
+              <button
+                onClick={() => setShareMode("direct")}
+                className={`flex-1 py-1.5 text-xs rounded-full cursor-pointer border ${
+                  shareMode === "direct" ? "vk-btn-lime border-transparent" : "vk-btn-outline"
+                }`}
+              >
+                Any Network (Offline)
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span style={{ color: "var(--vk-ink-2)" }}>Expires in:</span>
+              {[120, 300].map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => setShareTtl(sec)}
+                  className={`px-3 py-1 rounded-full text-xs cursor-pointer border ${
+                    shareTtl === sec ? "vk-btn-lime border-transparent" : "vk-btn-outline"
+                  }`}
+                >
+                  {sec / 60} min
+                </button>
+              ))}
+            </div>
+
+            {shareBurned ? (
+              <div className="vk-well p-6 text-center space-y-3">
+                {shareClaimed ? (
+                  <CheckCircle2 className="w-10 h-10 mx-auto" style={{ color: "var(--vk-low)" }} />
+                ) : (
+                  <Flame className="w-10 h-10 mx-auto" style={{ color: "var(--vk-danger)" }} />
+                )}
+                <div className="font-bold text-sm">
+                  {shareClaimed ? "Claimed & Burned!" : "One-Time QR Burned"}
+                </div>
+                <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
+                  {shareClaimed
+                    ? "Your friend received the login and this QR code was automatically destroyed."
+                    : "This QR code expired or was burned and can no longer be used."}
+                </p>
+                <button
+                  onClick={() => void generateShareQr(sharingEntry, shareMode, shareTtl)}
+                  className="vk-btn-lime px-4 py-2 text-xs cursor-pointer"
+                >
+                  Generate New 1-Time QR
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-5 flex flex-col items-center gap-3">
+                {shareData?.qrSvg && (
+                  <div
+                    className="w-56 h-56 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                    dangerouslySetInnerHTML={{ __html: shareData.qrSvg }}
+                  />
+                )}
+                <div className="px-3 py-1 rounded-full bg-[#EAFF87] text-[#1B201C] text-xs font-semibold">
+                  Expires in {Math.floor(shareRemaining / 60)}:{String(shareRemaining % 60).padStart(2, "0")}
+                </div>
+                <p className="text-[11px] text-center text-gray-600">
+                  {shareData?.mode === "lan"
+                    ? "AES-256-GCM encrypted. Auto-destroys immediately after the first scan."
+                    : "AES-256-GCM encrypted. Works offline across any network and can only be imported once."}
+                </p>
+              </div>
+            )}
+
+            {!shareBurned && (
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (shareData?.qrUrl) await navigator.clipboard.writeText(shareData.qrUrl).catch(() => {});
+                  }}
+                  className="vk-btn-outline flex-1 py-2 text-xs cursor-pointer"
+                >
+                  Copy Code
+                </button>
+                <button
+                  onClick={() => {
+                    if (shareData?.shareId) void api.vaultShareBurn(shareData.shareId).catch(() => {});
+                    setShareBurned(true);
+                  }}
+                  className="flex-1 py-2 text-xs rounded-full cursor-pointer border-0 font-semibold"
+                  style={{ background: "var(--vk-danger-soft)", color: "var(--vk-danger)" }}
+                >
+                  Burn Now
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Receive 1-Time Share Modal */}
+      {importOpen && (
+        <div
+          onClick={() => setImportOpen(false)}
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+        >
+          <div onClick={(e) => e.stopPropagation()} className="vk-card max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base">Receive Shared Password</h3>
+              <button onClick={() => setImportOpen(false)} className="p-1.5 rounded-full hover:bg-black/10 bg-transparent border-0 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: "var(--vk-ink-2)" }}>
+              Paste a one-time share link (`voxban://pwshare?...`) from your friend's Voxban Android or Desktop app.
+            </p>
+            <textarea
+              rows={3}
+              value={importCode}
+              onChange={(e) => setImportCode(e.target.value)}
+              placeholder="voxban://pwshare?..."
+              className="w-full vk-well px-3.5 py-2.5 text-xs font-mono border-0 outline-none resize-none"
+            />
+            {importErr && <div className="text-xs" style={{ color: "var(--vk-danger)" }}>{importErr}</div>}
+            <button
+              onClick={() => void importSharedCode()}
+              disabled={importBusy || !importCode.trim()}
+              className="vk-btn-lime w-full py-2.5 text-xs font-semibold cursor-pointer disabled:opacity-60"
+            >
+              {importBusy ? "Decrypting…" : "Claim & Save to My Vault"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

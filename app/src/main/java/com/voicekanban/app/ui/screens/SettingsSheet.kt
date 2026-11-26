@@ -128,6 +128,7 @@ fun SettingsSheet(
         }
         Spacer(Modifier.height(10.dp))
         when (s.engine) {
+            Engine.ON_DEVICE -> Gemma4EnginePanel(vm)
             else -> CloudEnginePanel(vm, s.engine)
         }
 
@@ -201,6 +202,180 @@ private fun ToggleRow(icon: ImageVector, title: String, body: String, checked: B
             Text(body, fontSize = 12.sp, color = c.inkSecondary)
         }
         Switch(checked, onChange, enabled = enabled)
+    }
+}
+
+// ---------------------------------------------------------------- on-device Gemma 4
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Gemma4EnginePanel(vm: MainViewModel) {
+    val c = VK.colors
+    val ctx = LocalContext.current
+    val app by vm.state.collectAsState()
+    val statuses by com.voicekanban.app.ai.Gemma4DownloadManager.statuses.collectAsState()
+    val selectedId = app.settings.gemmaModelId
+    var pendingDownloadId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { com.voicekanban.app.ai.Gemma4DownloadManager.refresh(ctx) }
+
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+        pendingDownloadId?.let { id ->
+            com.voicekanban.app.ai.Gemma4DownloadManager.startDownload(ctx, id)
+            pendingDownloadId = null
+        }
+    }
+
+    fun startBgDownload(modelId: String) {
+        if (Build.VERSION.SDK_INT >= 33 && !com.voicekanban.app.reminders.Reminders.canPost(ctx)) {
+            pendingDownloadId = modelId
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            com.voicekanban.app.ai.Gemma4DownloadManager.startDownload(ctx, modelId)
+        }
+    }
+
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.surfaceWell).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Memory, null, tint = c.accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Gemma 4 (On-Device Offline AI)", style = MaterialTheme.typography.titleMedium, color = c.ink)
+                Text(
+                    "Runs privately on your phone with zero API key. Full tool support for Tasks, Notes, Money, Vault & Calendar. Downloads continue in the background with a progress notification.",
+                    fontSize = 11.sp,
+                    color = c.inkSecondary,
+                )
+            }
+        }
+
+        com.voicekanban.app.ai.Gemma4Catalog.models.forEach { spec ->
+            val selected = spec.id == selectedId
+            val st = statuses[spec.id] ?: com.voicekanban.app.ai.GemmaDownloadStatus.NotDownloaded
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) c.raised else c.surface)
+                    .border(1.dp, if (selected) c.ink else c.border, RoundedCornerShape(14.dp))
+                    .clickable { vm.updateSettings { it.copy(gemmaModelId = spec.id) } }
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(spec.name, style = MaterialTheme.typography.titleSmall, color = c.ink)
+                            if (spec.recommended) {
+                                Text(
+                                    "RECOMMENDED",
+                                    fontSize = 9.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = c.onLime,
+                                    modifier = Modifier.clip(CircleShape).background(c.limeTile).padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        Text("${spec.shortName} · ${spec.description}", fontSize = 11.sp, color = c.inkSecondary)
+                    }
+                    if (st is com.voicekanban.app.ai.GemmaDownloadStatus.Ready) {
+                        Icon(Icons.Rounded.CheckCircle, "Ready", tint = c.low, modifier = Modifier.size(20.dp))
+                    }
+                }
+
+                when (st) {
+                    is com.voicekanban.app.ai.GemmaDownloadStatus.NotDownloaded -> {
+                        Button(
+                            onClick = {
+                                vm.updateSettings { it.copy(gemmaModelId = spec.id) }
+                                startBgDownload(spec.id)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                        ) {
+                            Icon(Icons.Rounded.CloudDownload, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Download in background (${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(spec.expectedSizeBytes)})")
+                        }
+                    }
+                    is com.voicekanban.app.ai.GemmaDownloadStatus.Downloading -> {
+                        LinearProgressIndicator(
+                            progress = { st.progress },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        )
+                        val speed = if (st.speedBytesPerSec > 0L) " · ${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(st.speedBytesPerSec)}/s" else ""
+                        Text(
+                            "${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(st.downloadedBytes)} / ${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(st.totalBytes)} (${st.percent}%)$speed",
+                            fontSize = 11.sp,
+                            color = c.inkSecondary,
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { com.voicekanban.app.ai.Gemma4DownloadManager.pauseDownload(ctx, spec.id) },
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Icon(Icons.Rounded.Pause, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Pause")
+                            }
+                            TextButton(onClick = { com.voicekanban.app.ai.Gemma4DownloadManager.cancelDownload(ctx, spec.id) }) {
+                                Text("Cancel", color = c.danger)
+                            }
+                        }
+                    }
+                    is com.voicekanban.app.ai.GemmaDownloadStatus.Paused -> {
+                        LinearProgressIndicator(
+                            progress = { st.progress },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        )
+                        Text(
+                            "Paused at ${st.percent}% (${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(st.downloadedBytes)} downloaded)",
+                            fontSize = 11.sp,
+                            color = c.inkSecondary,
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { startBgDownload(spec.id) },
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Resume download")
+                            }
+                            TextButton(onClick = { com.voicekanban.app.ai.Gemma4DownloadManager.cancelDownload(ctx, spec.id) }) {
+                                Text("Cancel", color = c.danger)
+                            }
+                        }
+                    }
+                    is com.voicekanban.app.ai.GemmaDownloadStatus.Ready -> {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Ready offline (${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(st.sizeBytes)})",
+                                fontSize = 12.sp,
+                                color = c.low,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { com.voicekanban.app.ai.Gemma4DownloadManager.deleteModel(ctx, spec.id) }) {
+                                Text("Delete", color = c.danger)
+                            }
+                        }
+                    }
+                    is com.voicekanban.app.ai.GemmaDownloadStatus.Error -> {
+                        Text(st.message, fontSize = 11.sp, color = c.danger)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { startBgDownload(spec.id) }, shape = RoundedCornerShape(10.dp)) {
+                                Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (st.downloadedBytes > 0L) "Resume download" else "Retry download")
+                            }
+                            TextButton(onClick = { com.voicekanban.app.ai.Gemma4DownloadManager.cancelDownload(ctx, spec.id) }) {
+                                Text("Clear", color = c.inkSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -430,15 +605,16 @@ private fun VoicePanel(vm: MainViewModel) {
         val playing by preview.speakingId.collectAsState()
         (previewError ?: error)?.let { Text(it, fontSize = 12.sp, color = c.danger, modifier = Modifier.padding(top = 8.dp)) }
 
-        if (voices.isNotEmpty()) {
-            Text("${lang.label} voice", style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.padding(top = 14.dp))
+        val freeVoices = voices.filter { it.freeAllowed }
+        if (freeVoices.isNotEmpty()) {
+            Text("${lang.label} voice (free)", style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.padding(top = 14.dp))
             Text(
-                if (lang != com.voicekanban.app.data.AppLanguage.EN) "Native ${lang.label} speakers from the ElevenLabs Voice Library. ▶ plays the voice’s own sample; tap a voice to use it."
-                else "Voices in your ElevenLabs account. Tap one to use it.",
+                if (lang != com.voicekanban.app.data.AppLanguage.EN) "Free native ${lang.label} speakers from the ElevenLabs Voice Library. ▶ plays a sample; tap a voice to use it."
+                else "Free voices in your ElevenLabs account. Tap one to use it.",
                 fontSize = 11.sp, color = c.inkSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
             )
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                voices.take(25).forEach { v ->
+                freeVoices.take(25).forEach { v ->
                     val selected = current?.id == v.id || current?.name == v.name
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
@@ -465,9 +641,9 @@ private fun VoicePanel(vm: MainViewModel) {
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(v.name, color = if (selected) c.onLime else c.ink, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-                                if (v.publicOwnerId != null) Text(
-                                    if (v.freeAllowed) "  FREE" else "  PAID PLAN", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                    color = if (selected) c.onLime else if (v.freeAllowed) c.low else c.medium,
+                                Text(
+                                    "  FREE", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = if (selected) c.onLime else c.low,
                                 )
                             }
                             val sub = listOf(v.description, if (adding == v.id) "Adding…" else if (selected) "In use" else "").filter { it.isNotBlank() }.joinToString(" · ")
@@ -485,7 +661,7 @@ private fun VoicePanel(vm: MainViewModel) {
                 }
             }
         } else if (key.isNotBlank() && !loading && error == null) {
-            Text("No ${lang.label} voices found in the Voice Library for this key.", fontSize = 12.sp, color = c.inkSecondary, modifier = Modifier.padding(top = 10.dp))
+            Text("No free ${lang.label} voices found in the Voice Library for this key.", fontSize = 12.sp, color = c.inkSecondary, modifier = Modifier.padding(top = 10.dp))
         }
     }
 }

@@ -314,6 +314,91 @@ class NewFeaturesTest {
         assertFalse(AppUpdater.isUpdateRequired(com.voicekanban.app.update.UpdateState.Error("Offline", null)))
     }
 
+    // ------------------------------------------------------------ Gemma 4, Chat JSON Sanitizer, Free Voices & Vault 1-Time QR
+
+    @Test
+    fun gemma4IsSelectableAndToolSetCoversAllModules() {
+        assertTrue(com.voicekanban.app.data.Engine.ON_DEVICE in com.voicekanban.app.data.Engine.selectable)
+        assertEquals(2, com.voicekanban.app.ai.Gemma4Catalog.models.size)
+
+        val tools = com.voicekanban.app.ai.VoxbanToolSet()
+        tools.add_card("Buy milk", "To Do", "high", "2026-11-28T17:00", "2% organic", "")
+        tools.create_note("Trip ideas", "- [ ] Book train", "sky")
+        tools.add_password("Netflix", "alex@mail.com", "", "https://netflix.com", "", true)
+        tools.add_transaction("expense", 350.0, "Food", "Dinner", "")
+        tools.set_budget("Food", 5000.0)
+        tools.add_reminder("Call dentist", "2026-11-29T10:00", "Bring card", "none")
+
+        assertEquals(6, tools.collected.size)
+        val board = Presets.empty()
+        val outcome = Dispatcher.apply(
+            actions = tools.collected,
+            start = Workspace(listOf(board), board.id),
+            currency = "$",
+        )
+        assertTrue(outcome.mutated)
+        assertEquals(1, outcome.workspace.activeBoard.totalCards)
+        assertEquals(1, outcome.notes?.size)
+        assertEquals(1, outcome.vault?.size)
+        assertEquals(1, outcome.transactions?.size)
+        assertEquals(1, outcome.budgets?.size)
+        assertEquals(1, outcome.calendarReminders?.size)
+    }
+
+    @Test
+    fun chatParserNeverLeaksJsonSchemaOrDoubleEncodedJson() {
+        val schemaEcho = """{"type":"object","properties":{"reply":{"type":"string"},"actions":{"type":"array"}}}"""
+        val (r1, a1) = com.voicekanban.app.ai.Assistant.parseLlmResponse(schemaEcho)
+        assertTrue("Expected schema stripped, got: $r1", r1.isBlank())
+        assertTrue(a1.isEmpty())
+
+        val nested = """{"reply":"{\"reply\":\"All set!\",\"actions\":[]}","actions":[]}"""
+        val (r2, _) = com.voicekanban.app.ai.Assistant.parseLlmResponse(nested)
+        assertEquals("All set!", r2)
+
+        val truncated = """{"reply": "Logged your lunch expense of $15.", "actions": [{"action":"add_transaction","amount":15,"type":"expense","category":"Food"}"""
+        val (r3, a3) = com.voicekanban.app.ai.Assistant.parseLlmResponse(truncated)
+        assertEquals("Logged your lunch expense of $15.", r3)
+        assertEquals(1, a3.size)
+
+        val prosePlusFence = "<thought>plan</thought>\nHere you go:\n```json\n{\"reply\":\"Added Buy coffee to To Do.\",\"actions\":[{\"action\":\"add\",\"text\":\"Buy coffee\"}]}\n```"
+        val (r4, a4) = com.voicekanban.app.ai.Assistant.parseLlmResponse(prosePlusFence)
+        assertEquals("Added Buy coffee to To Do.", r4)
+        assertEquals(1, a4.size)
+    }
+
+    @Test
+    fun filtersOutPaidElevenLabsVoices() {
+        val j = Json { ignoreUnknownKeys = true }
+        val freeLib = j.parseToJsonElement("""{"voice_id":"1","name":"Free Voice","free_users_allowed":true,"category":"generated"}""").jsonObject
+        val paidLib = j.parseToJsonElement("""{"voice_id":"2","name":"Paid Voice","free_users_allowed":false}""").jsonObject
+        val paidShared = j.parseToJsonElement("""{"voice_id":"3","name":"Shared Paid","sharing":{"free_users_allowed":false}}""").jsonObject
+        val proVoice = j.parseToJsonElement("""{"voice_id":"4","name":"Pro Voice","category":"professional"}""").jsonObject
+        val tierPaid = j.parseToJsonElement("""{"voice_id":"5","name":"Creator Only","available_for_tiers":["creator","pro"]}""").jsonObject
+        val premade = j.parseToJsonElement("""{"voice_id":"6","name":"Rachel","category":"premade"}""").jsonObject
+
+        assertTrue(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(freeLib))
+        assertTrue(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(premade))
+        assertFalse(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(paidLib))
+        assertFalse(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(paidShared))
+        assertFalse(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(proVoice))
+        assertFalse(com.voicekanban.app.voice.VoiceOutput.isFreeElevenLabsVoice(tierPaid))
+    }
+
+    @Test
+    fun noteImagesBackwardCompatibleDeserialization() {
+        val j = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val legacyJson = """{"id":"n1","title":"Old Note","body":"Hello","color":4293590919,"pinned":true}"""
+        val decoded = j.decodeFromString(com.voicekanban.app.data.Note.serializer(), legacyJson)
+        assertTrue(decoded.images.isEmpty())
+        assertTrue(decoded.pinned)
+
+        val withImg = decoded.copy(images = listOf("data:image/jpeg;base64,AAAA"))
+        val roundTrip = j.decodeFromString(com.voicekanban.app.data.Note.serializer(), j.encodeToString(com.voicekanban.app.data.Note.serializer(), withImg))
+        assertEquals(1, roundTrip.images.size)
+        assertEquals("data:image/jpeg;base64,AAAA", roundTrip.images.first())
+    }
+
     @Test
     fun liveMusicSearchAndStreamExtractionWhenEnabled() {
         if (System.getenv("VOXBAN_LIVE_NET_TEST") != "true") return

@@ -474,17 +474,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------ notes
 
     /** AI turns scattered words into a note (new, or merged into [existing]). */
-    fun composeNote(raw: String, existing: Note? = null, onDone: (Note?) -> Unit = {}) {
-        val words = raw.trim(); if (words.isEmpty() && existing == null) return
+    fun composeNote(raw: String, existing: Note? = null, initialImages: List<String> = emptyList(), onDone: (Note?) -> Unit = {}) {
+        val words = raw.trim(); if (words.isEmpty() && existing == null && initialImages.isEmpty()) return
         if (_composing.value) return
         _composing.value = true
         viewModelScope.launch {
             try {
                 val s = state.value.settings
-                val d = Assistant.composeNote(getApplication(), words, existing, s, keyFor(s.engine))
+                val d = if (words.isNotEmpty() || existing != null) {
+                    Assistant.composeNote(getApplication(), words, existing, s, keyFor(s.engine))
+                } else {
+                    Assistant.NoteDraft("Photo note", "", null)
+                }
                 val now = System.currentTimeMillis()
-                val note = existing?.copy(title = d.title, body = d.body, color = noteColorByName(d.color) ?: existing.color, source = (existing.source + "\n" + words).trim(), updatedAt = now)
-                    ?: Note(newId("n"), d.title, d.body, color = noteColorByName(d.color) ?: NOTE_COLORS[state.value.notes.size % NOTE_COLORS.size].second, source = words)
+                val note = existing?.copy(
+                    title = d.title,
+                    body = d.body,
+                    color = noteColorByName(d.color) ?: existing.color,
+                    source = (existing.source + "\n" + words).trim(),
+                    images = (existing.images + initialImages).distinct(),
+                    updatedAt = now,
+                ) ?: Note(
+                    newId("n"),
+                    d.title,
+                    d.body,
+                    color = noteColorByName(d.color) ?: NOTE_COLORS[state.value.notes.size % NOTE_COLORS.size].second,
+                    source = words,
+                    images = initialImages,
+                )
                 repo.update { st -> st.copy(notes = if (existing != null) st.notes.map { if (it.id == note.id) note else it } else listOf(note) + st.notes) }
                 showToast(ToastKind.SUCCESS, if (existing != null) "Note polished" else "Note created", note.title)
                 onDone(note)
@@ -493,6 +510,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 onDone(null)
             } finally { _composing.value = false }
         }
+    }
+
+    fun duplicateNote(id: String) {
+        val src = state.value.notes.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        val copy = src.copy(
+            id = newId("n"),
+            title = "${src.title} (copy)",
+            pinned = false,
+            createdAt = now,
+            updatedAt = now,
+        )
+        repo.update { st -> st.copy(notes = listOf(copy) + st.notes) }
+        showToast(ToastKind.SUCCESS, "Duplicated note", copy.title)
     }
 
     fun saveNote(note: Note) = repo.update { st ->
@@ -778,7 +809,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun testEngine(engine: Engine): String = CloudProviders.test(engine, keyFor(engine), state.value.settings.cloudModels[engine.name])
 
 
-    fun completeOnboarding(userName: String, language: String, engine: Engine, key: String) {
+    fun completeOnboarding(userName: String, language: String, engine: Engine, key: String, gemmaModelId: String = com.voicekanban.app.ai.Gemma4Catalog.E2B_ID) {
         if (engine.needsKey && key.isNotBlank()) repo.setKey(engine.name, key)
         repo.updateSettings {
             it.copy(
@@ -786,6 +817,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 userName = userName.trim(),
                 language = language,
                 engine = engine,
+                gemmaModelId = gemmaModelId,
             )
         }
     }

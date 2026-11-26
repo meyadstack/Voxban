@@ -165,7 +165,10 @@ fun AssistantScreen(vm: MainViewModel) {
     }
     LaunchedEffect(chatMode) { if (chatMode) { speech.cancel(); voiceOut.stop() } }
 
-    val engineLabel = settings.engine.label
+    val engineLabel = if (settings.engine == Engine.ON_DEVICE) com.voicekanban.app.ai.Gemma4Catalog.byId(settings.gemmaModelId).name else settings.engine.label
+    val gemmaLoading by com.voicekanban.app.ai.LocalGemmaEngine.loading.collectAsState()
+    val gemmaStatuses by com.voicekanban.app.ai.Gemma4DownloadManager.statuses.collectAsState()
+    val gemmaStatus = gemmaStatuses[settings.gemmaModelId]
     val session = app.activeSession
 
     Column(Modifier.fillMaxSize().background(c.background)) {
@@ -194,6 +197,31 @@ fun AssistantScreen(vm: MainViewModel) {
             }
         }
 
+        if (settings.engine == Engine.ON_DEVICE && gemmaStatus is com.voicekanban.app.ai.GemmaDownloadStatus.Downloading) {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp)).background(c.surface).border(1.dp, c.border, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Downloading $engineLabel (${gemmaStatus.percent}%)",
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c.ink,
+                    )
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { gemmaStatus.progress },
+                        modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    )
+                }
+                Text(
+                    "${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(gemmaStatus.downloadedBytes)} / ${com.voicekanban.app.ai.Gemma4DownloadManager.formatBytes(gemmaStatus.totalBytes)}",
+                    fontSize = 10.sp, color = c.inkSecondary,
+                )
+            }
+        }
+
         AnimatedContent(chatMode, Modifier.weight(1f), transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) }, label = "mode") { chat ->
             if (!chat) {
                 val mood = when {
@@ -213,7 +241,7 @@ fun AssistantScreen(vm: MainViewModel) {
                     },
                     micLevel = voice.level,
                     outLevel = outLevel,
-                    loadingModel = false,
+                    loadingModel = gemmaLoading,
                     last = last,
                     canUndo = last?.let { it.id in undoable } == true,
                     onTalk = {

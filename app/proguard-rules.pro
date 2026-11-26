@@ -1,8 +1,19 @@
 # --- Keep metadata reflection-based libraries rely on
--keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Exceptions
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Exceptions,MethodParameters
 -keep class kotlin.Metadata { *; }
 -keep class kotlin.reflect.** { *; }
 -dontwarn kotlin.reflect.**
+
+# --- LiteRT-LM on-device Gemma 4 engine & reflection @Tool methods
+-keep class com.google.ai.edge.litertlm.** { *; }
+-keep class com.google.ai.edge.litert.** { *; }
+-keep class com.google.gson.** { *; }
+-keep class com.voicekanban.app.ai.VoxbanToolSet { *; }
+-keepclassmembers class * implements com.google.ai.edge.litertlm.ToolSet {
+    @com.google.ai.edge.litertlm.Tool <methods>;
+}
+-dontwarn com.google.ai.edge.litertlm.**
+-dontwarn com.google.ai.edge.litert.**
 
 
 # --- Anthropic SDK (Jackson + Kotlin reflection). Keep members of every

@@ -20,11 +20,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.ui.text.style.TextAlign
+import java.time.DayOfWeek
+import java.time.LocalTime
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -67,22 +72,39 @@ import java.util.Locale
 private val zone: ZoneId get() = ZoneId.systemDefault()
 private fun Long.date(): LocalDate = Instant.ofEpochMilli(this).atZone(zone).toLocalDate()
 
-/** Money manager: monthly income / spending, categories with budgets, and every transaction. */
+/** Money manager: monthly income / spending, interactive calendar, categories with budgets, and every transaction. */
 @Composable
 fun MoneyScreen(vm: MainViewModel) {
     val c = VK.colors
     val app by vm.state.collectAsState()
     val cur = vm.currency
     var month by remember { mutableStateOf(YearMonth.now()) }
+    var showCalendar by remember { mutableStateOf(false) }
+    var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
     var editing by remember { mutableStateOf<Transaction?>(null) }
     var budgetFor by remember { mutableStateOf<String?>(null) }
 
+    // Keep selectedDay within the currently displayed month
+    LaunchedEffect(month) {
+        if (selectedDay != null && YearMonth.from(selectedDay) != month) {
+            selectedDay = null
+        }
+    }
+
     val inMonth = app.transactions.filter { YearMonth.from(it.at.date()) == month }.sortedByDescending { it.at }
+    val byDay = remember(inMonth) { inMonth.groupBy { it.at.date() } }
+    val visibleTx = selectedDay?.let { d -> byDay[d].orEmpty() } ?: inMonth
     val income = inMonth.filter { it.type == TxType.INCOME }.sumOf { it.amount }
     val spent = inMonth.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
     val byCat = inMonth.filter { it.type == TxType.EXPENSE }.groupBy { it.category }.mapValues { e -> e.value.sumOf { it.amount } }
     val cats = (byCat.keys + app.budgets.map { it.category }).distinct().sortedByDescending { byCat[it] ?: 0.0 }
     val monthLabel = "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
+
+    fun newTxFor(type: TxType): Transaction {
+        val day = selectedDay ?: LocalDate.now().takeIf { YearMonth.from(it) == month } ?: month.atDay(1)
+        val at = day.atTime(LocalTime.now()).atZone(zone).toInstant().toEpochMilli()
+        return Transaction(newId("t"), 0.0, type, at = at)
+    }
 
     Column(Modifier.fillMaxSize().background(c.background)) {
         ScreenHeader(
@@ -90,110 +112,183 @@ fun MoneyScreen(vm: MainViewModel) {
             subtitle = "$monthLabel · ${inMonth.size} transaction${if (inMonth.size == 1) "" else "s"}",
             leading = { HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous month") { month = month.minusMonths(1) } },
             trailing = {
-                if (month < YearMonth.now()) HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month") { month = month.plusMonths(1) }
-                else HeaderButton(Icons.Rounded.Add, "Add transaction") { editing = Transaction(newId("t"), 0.0) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HeaderButton(Icons.Rounded.CalendarMonth, "Money calendar", active = showCalendar) {
+                        showCalendar = !showCalendar
+                        if (!showCalendar) selectedDay = null
+                    }
+                    if (month < YearMonth.now()) HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month") { month = month.plusMonths(1) }
+                    else HeaderButton(Icons.Rounded.Add, "Add transaction") { editing = newTxFor(TxType.EXPENSE) }
+                }
             },
-        )
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("Overview", !showCalendar, Modifier.weight(1f), Icons.Rounded.AccountBalanceWallet) {
+                    showCalendar = false
+                    selectedDay = null
+                }
+                Pill("Calendar", showCalendar, Modifier.weight(1f), Icons.Rounded.CalendarMonth) {
+                    showCalendar = true
+                }
+            }
+        }
 
         val r = VK.responsive
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = r.gutter, end = r.gutter, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Swipeable monthly summary card (swipe left/right to glide across months)
-            item {
-                SwipeStepContainer(
-                    modifier = Modifier.fillMaxWidth(),
-                    canSwipeLeft = month < YearMonth.now(),
-                    canSwipeRight = true,
-                    onSwipeLeft = { if (month < YearMonth.now()) month = month.plusMonths(1) },
-                    onSwipeRight = { month = month.minusMonths(1) },
-                ) {
-                    AnimatedContent(
-                        targetState = month,
-                        transitionSpec = {
-                            val dir = if (targetState.isAfter(initialState)) 1 else -1
-                            (fadeIn(tween(180)) + slideInHorizontally(tween(240)) { dir * it / 3 })
-                                .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -dir * it / 3 })
-                        },
-                        label = "moneyMonthSwipe",
-                    ) { m ->
-                        val mList = app.transactions.filter { YearMonth.from(it.at.date()) == m }
-                        val mInc = mList.filter { it.type == TxType.INCOME }.sumOf { it.amount }
-                        val mSpent = mList.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(if (r.isCompactWidth) 16.dp else 20.dp)) {
-                            Text(
-                                "Balance · ${m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${m.year}",
-                                fontSize = 12.sp,
-                                color = c.onLime.copy(alpha = 0.7f),
-                                fontWeight = FontWeight.Medium,
-                            )
-                            Text(
-                                (if (mInc - mSpent < 0) "−" else "") + formatMoney(kotlin.math.abs(mInc - mSpent), cur),
-                                fontSize = if (r.isCompactWidth) 30.sp else 38.sp,
-                                lineHeight = if (r.isCompactWidth) 36.sp else 44.sp,
-                                color = c.onLime,
-                                letterSpacing = (-1).sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Stat(Modifier.weight(1f), "Income", formatMoney(mInc, cur), c.low)
-                                Stat(Modifier.weight(1f), "Spent", formatMoney(mSpent, cur), c.high)
+            if (showCalendar) {
+                item {
+                    MoneyCalendarCard(
+                        month = month,
+                        selectedDay = selectedDay,
+                        byDay = byDay,
+                        currency = cur,
+                        onPrevMonth = { month = month.minusMonths(1) },
+                        onNextMonth = { month = month.plusMonths(1) },
+                        onSelectDay = { d -> selectedDay = if (selectedDay == d) null else d },
+                    )
+                }
+                selectedDay?.let { day ->
+                    val dayList = byDay[day].orEmpty()
+                    val dayInc = dayList.filter { it.type == TxType.INCOME }.sumOf { it.amount }
+                    val daySpent = dayList.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.raised)
+                                .border(1.dp, c.border, RoundedCornerShape(22.dp)).padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(day.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium, color = c.ink)
+                                    Text(
+                                        "${dayList.size} transaction${if (dayList.size == 1) "" else "s"} · +${formatMoney(dayInc, cur)} · -${formatMoney(daySpent, cur)}",
+                                        fontSize = 12.sp,
+                                        color = c.inkSecondary,
+                                    )
+                                }
+                                Chip("Full month") { selectedDay = null }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { editing = newTxFor(TxType.EXPENSE) },
+                                    Modifier.weight(1f).height(42.dp),
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
+                                ) { Text("− Expense", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+                                Button(
+                                    onClick = { editing = newTxFor(TxType.INCOME) },
+                                    Modifier.weight(1f).height(42.dp),
+                                    shape = CircleShape,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.surface, contentColor = c.ink),
+                                ) { Text("+ Income", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
                             }
                         }
                     }
                 }
-            }
-            // Quick add buttons
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = { editing = Transaction(newId("t"), 0.0, TxType.EXPENSE) }, Modifier.weight(1f).height(48.dp), shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
-                    ) { Text("− Expense", fontWeight = FontWeight.SemiBold) }
-                    Button(
-                        onClick = { editing = Transaction(newId("t"), 0.0, TxType.INCOME) }, Modifier.weight(1f).height(48.dp), shape = CircleShape,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
-                        colors = ButtonDefaults.buttonColors(containerColor = c.raised, contentColor = c.ink),
-                    ) { Text("+ Income", fontWeight = FontWeight.SemiBold) }
-                }
-            }
-            item {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.surface).border(1.dp, c.border, RoundedCornerShape(18.dp))
-                        .clickable { vm.openAssistant(false) }.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = c.accentText, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(10.dp))
-                    Text("Or just tell Voice AI: “I spent 250 on lunch” · “Got my salary 45,000” · “Set food budget to 6,000”", fontSize = 13.sp, color = c.inkSecondary)
-                }
-            }
-            // Categories & budgets
-            if (cats.isNotEmpty()) item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(c.raised).border(1.dp, c.border, RoundedCornerShape(24.dp)).padding(16.dp)) {
-                    Text("Spending by category", style = MaterialTheme.typography.titleMedium, color = c.ink)
-                    Text("Tap a category to set a monthly budget.", fontSize = 12.sp, color = c.inkTertiary, modifier = Modifier.padding(bottom = 6.dp))
-                    val max = (cats.maxOfOrNull { maxOf(byCat[it] ?: 0.0, app.budgets.firstOrNull { b -> b.category == it }?.limit ?: 0.0) } ?: 1.0).coerceAtLeast(1.0)
-                    cats.forEach { cat ->
-                        val amt = byCat[cat] ?: 0.0
-                        val budget = app.budgets.firstOrNull { it.category.equals(cat, true) }?.limit
-                        val over = budget != null && amt > budget
-                        Column(Modifier.padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).clickable { budgetFor = cat }) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(categoryEmoji(TxType.EXPENSE, cat) + "  " + cat, color = c.ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                Text(formatMoney(amt, cur) + (budget?.let { " / ${formatMoney(it, cur)}" } ?: ""), color = if (over) c.high else c.inkSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            } else {
+                // Swipeable monthly summary card (swipe left/right to glide across months)
+                item {
+                    SwipeStepContainer(
+                        modifier = Modifier.fillMaxWidth(),
+                        canSwipeLeft = month < YearMonth.now(),
+                        canSwipeRight = true,
+                        onSwipeLeft = { if (month < YearMonth.now()) month = month.plusMonths(1) },
+                        onSwipeRight = { month = month.minusMonths(1) },
+                    ) {
+                        AnimatedContent(
+                            targetState = month,
+                            transitionSpec = {
+                                val dir = if (targetState.isAfter(initialState)) 1 else -1
+                                (fadeIn(tween(180)) + slideInHorizontally(tween(240)) { dir * it / 3 })
+                                    .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -dir * it / 3 })
+                            },
+                            label = "moneyMonthSwipe",
+                        ) { m ->
+                            val mList = app.transactions.filter { YearMonth.from(it.at.date()) == m }
+                            val mInc = mList.filter { it.type == TxType.INCOME }.sumOf { it.amount }
+                            val mSpent = mList.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.limeTile).padding(if (r.isCompactWidth) 16.dp else 20.dp)) {
+                                Text(
+                                    "Balance · ${m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${m.year}",
+                                    fontSize = 12.sp,
+                                    color = c.onLime.copy(alpha = 0.7f),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    (if (mInc - mSpent < 0) "−" else "") + formatMoney(kotlin.math.abs(mInc - mSpent), cur),
+                                    fontSize = if (r.isCompactWidth) 30.sp else 38.sp,
+                                    lineHeight = if (r.isCompactWidth) 36.sp else 44.sp,
+                                    color = c.onLime,
+                                    letterSpacing = (-1).sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Stat(Modifier.weight(1f), "Income", formatMoney(mInc, cur), c.low)
+                                    Stat(Modifier.weight(1f), "Spent", formatMoney(mSpent, cur), c.high)
+                                }
                             }
-                            val frac = if (budget != null) (amt / budget).toFloat() else (amt / max).toFloat()
-                            Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(8.dp).clip(CircleShape).background(c.surfaceWell)) {
-                                Box(Modifier.fillMaxWidth(frac.coerceIn(0.02f, 1f)).fillMaxHeight().clip(CircleShape).background(if (over) c.high else if (budget != null && frac > 0.8f) c.medium else c.voiceSecondary))
+                        }
+                    }
+                }
+                // Quick add buttons
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { editing = newTxFor(TxType.EXPENSE) }, Modifier.weight(1f).height(48.dp), shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
+                        ) { Text("− Expense", fontWeight = FontWeight.SemiBold) }
+                        Button(
+                            onClick = { editing = newTxFor(TxType.INCOME) }, Modifier.weight(1f).height(48.dp), shape = CircleShape,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, c.buttonBorder),
+                            colors = ButtonDefaults.buttonColors(containerColor = c.raised, contentColor = c.ink),
+                        ) { Text("+ Income", fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.surface).border(1.dp, c.border, RoundedCornerShape(18.dp))
+                            .clickable { vm.openAssistant(false) }.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.AutoAwesome, null, tint = c.accentText, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(10.dp))
+                        Text("Or just tell Voice AI: “I spent 250 on lunch” · “Got my salary 45,000” · “Set food budget to 6,000”", fontSize = 13.sp, color = c.inkSecondary)
+                    }
+                }
+                // Categories & budgets
+                if (cats.isNotEmpty()) item {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(c.raised).border(1.dp, c.border, RoundedCornerShape(24.dp)).padding(16.dp)) {
+                        Text("Spending by category", style = MaterialTheme.typography.titleMedium, color = c.ink)
+                        Text("Tap a category to set a monthly budget.", fontSize = 12.sp, color = c.inkTertiary, modifier = Modifier.padding(bottom = 6.dp))
+                        val max = (cats.maxOfOrNull { maxOf(byCat[it] ?: 0.0, app.budgets.firstOrNull { b -> b.category == it }?.limit ?: 0.0) } ?: 1.0).coerceAtLeast(1.0)
+                        cats.forEach { cat ->
+                            val amt = byCat[cat] ?: 0.0
+                            val budget = app.budgets.firstOrNull { it.category.equals(cat, true) }?.limit
+                            val over = budget != null && amt > budget
+                            Column(Modifier.padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).clickable { budgetFor = cat }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(categoryEmoji(TxType.EXPENSE, cat) + "  " + cat, color = c.ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                    Text(formatMoney(amt, cur) + (budget?.let { " / ${formatMoney(it, cur)}" } ?: ""), color = if (over) c.high else c.inkSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                                val frac = if (budget != null) (amt / budget).toFloat() else (amt / max).toFloat()
+                                Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(8.dp).clip(CircleShape).background(c.surfaceWell)) {
+                                    Box(Modifier.fillMaxWidth(frac.coerceIn(0.02f, 1f)).fillMaxHeight().clip(CircleShape).background(if (over) c.high else if (budget != null && frac > 0.8f) c.medium else c.voiceSecondary))
+                                }
                             }
                         }
                     }
                 }
             }
             // Transactions grouped by day
-            if (inMonth.isEmpty()) item {
-                Text("No transactions in $monthLabel yet.", color = c.inkSecondary, fontSize = 14.sp, modifier = Modifier.padding(8.dp))
+            if (visibleTx.isEmpty()) item {
+                Text(
+                    if (selectedDay != null) "No transactions on ${selectedDay!!.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}."
+                    else "No transactions in $monthLabel yet.",
+                    color = c.inkSecondary, fontSize = 14.sp, modifier = Modifier.padding(8.dp),
+                )
             }
-            inMonth.groupBy { it.at.date() }.forEach { (day, list) ->
+            visibleTx.groupBy { it.at.date() }.forEach { (day, list) ->
                 item(key = "d$day") {
                     val net = list.sumOf { if (it.type == TxType.INCOME) it.amount else -it.amount }
                     Row(Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp)) {
@@ -222,6 +317,160 @@ fun MoneyScreen(vm: MainViewModel) {
 
     editing?.let { t -> TxEditor(vm, t, onDismiss = { editing = null }) }
     budgetFor?.let { cat -> BudgetSheet(vm, cat, app.budgets.firstOrNull { it.category.equals(cat, true) }?.limit, onDismiss = { budgetFor = null }) }
+}
+
+@Composable
+private fun MoneyCalendarCard(
+    month: YearMonth,
+    selectedDay: LocalDate?,
+    byDay: Map<LocalDate, List<Transaction>>,
+    currency: String,
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectDay: (LocalDate) -> Unit,
+) {
+    val c = VK.colors
+    val today = LocalDate.now()
+    val monthIncome = byDay.values.flatten().filter { it.type == TxType.INCOME }.sumOf { it.amount }
+    val monthSpent = byDay.values.flatten().filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(c.raised)
+            .border(1.dp, c.border, RoundedCornerShape(24.dp)).padding(14.dp),
+    ) {
+        SwipeStepContainer(
+            modifier = Modifier.fillMaxWidth(),
+            onSwipeLeft = onNextMonth,
+            onSwipeRight = onPrevMonth,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous month", onClick = onPrevMonth)
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = c.ink,
+                        )
+                        Text(
+                            "+${formatMoney(monthIncome, currency)}  ·  −${formatMoney(monthSpent, currency)}",
+                            fontSize = 11.sp,
+                            color = c.inkSecondary,
+                        )
+                    }
+                    HeaderButton(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month", onClick = onNextMonth)
+                }
+
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)) {
+                    DayOfWeek.entries.forEach { d ->
+                        Text(
+                            d.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                            Modifier.weight(1f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = c.inkTertiary,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+
+                AnimatedContent(
+                    targetState = month,
+                    transitionSpec = {
+                        val dir = if (targetState.isAfter(initialState)) 1 else -1
+                        (fadeIn(tween(180)) + slideInHorizontally(tween(240)) { dir * it / 3 })
+                            .togetherWith(fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -dir * it / 3 })
+                    },
+                    label = "moneyCalGrid",
+                ) { displayMonth ->
+                    val first = displayMonth.atDay(1)
+                    val lead = first.dayOfWeek.value - 1
+                    val cells = List(lead) { null } + (1..displayMonth.lengthOfMonth()).map { displayMonth.atDay(it) }
+                    Column(Modifier.fillMaxWidth()) {
+                        cells.chunked(7).forEach { week ->
+                            Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                                (week + List(7 - week.size) { null }).forEach { day ->
+                                    Box(Modifier.weight(1f).height(52.dp).padding(2.dp), contentAlignment = Alignment.Center) {
+                                        if (day != null) {
+                                            val isSel = day == selectedDay
+                                            val isToday = day == today
+                                            val dayTxs = byDay[day].orEmpty()
+                                            val inc = dayTxs.filter { it.type == TxType.INCOME }.sumOf { it.amount }
+                                            val exp = dayTxs.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+                                            val hasTx = dayTxs.isNotEmpty()
+                                            Column(
+                                                Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                                    .background(if (isSel) c.limeTile else if (hasTx) c.surface else Color.Transparent)
+                                                    .border(
+                                                        1.dp,
+                                                        if (isToday && !isSel) c.ink else if (hasTx && !isSel) c.border else Color.Transparent,
+                                                        RoundedCornerShape(12.dp),
+                                                    )
+                                                    .clickable { onSelectDay(day) }
+                                                    .padding(horizontal = 2.dp, vertical = 3.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center,
+                                            ) {
+                                                Text(
+                                                    "${day.dayOfMonth}",
+                                                    fontSize = 12.sp,
+                                                    color = if (isSel) c.onLime else c.ink,
+                                                    fontWeight = if (isToday || isSel || hasTx) FontWeight.Bold else FontWeight.Normal,
+                                                )
+                                                if (hasTx) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
+                                                        if (inc > 0.0) Box(Modifier.size(5.dp).clip(CircleShape).background(if (isSel) c.onLime else c.low))
+                                                        if (exp > 0.0) Box(Modifier.size(5.dp).clip(CircleShape).background(if (isSel) c.onLime.copy(alpha = 0.7f) else c.high))
+                                                    }
+                                                    val net = inc - exp
+                                                    Text(
+                                                        compactAmount(net, currency),
+                                                        fontSize = 8.sp,
+                                                        lineHeight = 9.sp,
+                                                        maxLines = 1,
+                                                        color = if (isSel) c.onLime else if (net >= 0) c.low else c.high,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(c.low))
+                Text("Income", fontSize = 11.sp, color = c.inkTertiary)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(c.high))
+                Text("Expense", fontSize = 11.sp, color = c.inkTertiary)
+            }
+            Text("· Tap any date", fontSize = 11.sp, color = c.inkTertiary)
+        }
+    }
+}
+
+private fun compactAmount(net: Double, currency: String): String {
+    val abs = kotlin.math.abs(net)
+    val sign = if (net < 0) "-" else "+"
+    val num = when {
+        abs >= 1_000_000 -> "%.1fM".format(abs / 1_000_000.0)
+        abs >= 1_000 -> "%.1fk".format(abs / 1_000.0)
+        abs % 1.0 == 0.0 -> abs.toInt().toString()
+        else -> "%.0f".format(abs)
+    }
+    return "$sign$currency$num"
 }
 
 @Composable

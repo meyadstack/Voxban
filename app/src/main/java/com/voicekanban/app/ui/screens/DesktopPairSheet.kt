@@ -386,7 +386,7 @@ fun DesktopPairSheet(vm: MainViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun QrCameraPreview(
+internal fun QrCameraPreview(
     enabled: Boolean,
     onQrDetected: (String) -> Unit,
 ) {

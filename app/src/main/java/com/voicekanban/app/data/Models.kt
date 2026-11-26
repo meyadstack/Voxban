@@ -159,15 +159,15 @@ data class Workspace(
 enum class Engine(val label: String, val vendor: String, val needsKey: Boolean) {
     /** Retired option (kept so old saved settings still load); migrated to [ON_DEVICE]. */
     BUILT_IN("Offline rules", "Retired", false),
-    ON_DEVICE("On-device AI", "Gemma / Qwen · Offline", false),
+    ON_DEVICE("Gemma 4", "Google · On-device offline AI", false),
     OPENAI("ChatGPT", "OpenAI", true),
     OPENROUTER("OpenRouter", "Hundreds of models · one key", true),
     GEMINI("Gemini", "Google", true),
     CLAUDE("Claude", "Anthropic", true);
 
     companion object {
-        /** Engines offered in onboarding and Settings (the others are retired and migrate to Gemini). */
-        val selectable: List<Engine> get() = listOf(GEMINI, OPENAI, CLAUDE)
+        /** Engines offered in onboarding and Settings. */
+        val selectable: List<Engine> get() = listOf(GEMINI, ON_DEVICE, OPENAI, CLAUDE)
     }
 }
 
@@ -226,6 +226,8 @@ data class Settings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     /** Model id chosen per cloud engine (picked from the provider's model list). */
     val cloudModels: Map<String, String> = emptyMap(),
+    /** Selected on-device Gemma 4 model variant id (e.g. "gemma-4-e2b", "gemma-4-e4b"). */
+    val gemmaModelId: String = "gemma-4-e2b",
     /** ElevenLabs voice for English replies. */
     val voiceId: String = "cgSgspJ2msm6clMCkdW9",
     val voiceName: String = "Jessica",
@@ -318,6 +320,8 @@ data class Note(
     val pinned: Boolean = false,
     /** The scattered words the note was made from. */
     val source: String = "",
+    /** Attached images as compressed data URIs (sync-safe and backup-safe). */
+    val images: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 )

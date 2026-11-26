@@ -235,7 +235,7 @@ object Assistant {
         return """
 You are Voxban's assistant: a warm, witty, concise voice assistant inside an app with Kanban boards, notes, a money manager and a password vault. The user talks to you like a friend.$who$lang You remember the whole conversation below - use it to resolve "it", "that one", "the same", etc. You can also chat freely - jokes, advice, planning, general questions - answer those in "reply" with no actions.
 
-Reply with ONLY a JSON object: {"reply": "...", "actions": [...]}. "reply" is what you say back: 1-4 short sentences, plain text, may use • bullets.
+Reply with ONLY a JSON object: {"reply": "...", "actions": [...]}. "reply" is what you say back: 1-4 short sentences, plain conversational text (may use • bullets). Never put JSON, JSON schemas, or code fences inside "reply".
 The app changes NOTHING unless you put an action in "actions". Whenever the user asks to create, add, change, update, edit, move, rename, complete, delete or remove anything, you MUST include the matching action(s) - several if needed. Never claim a change you didn't include. Use "actions": [] for questions and chat.
 Earlier assistant turns may contain "applied": the changes that already happened. Don't repeat them unless asked again.
 
@@ -294,22 +294,284 @@ ${moneyContext(world)}
 """.trimIndent()
     }
 
-    private fun parseLlm(raw: String): Pair<String, List<Action>> = try {
-        val el = json.parseToJsonElement(CloudProviders.stripFences(raw))
-        if (el is JsonArray) "" to el.mapNotNull { actionFromJson(it) }
-        else {
-            val o = el.jsonObject
-            val reply = (o["reply"] ?: o["message"] ?: o["response"])?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }.orEmpty()
-            val actions = when (val a = o["actions"] ?: o["action"]) {
-                is JsonArray -> a.mapNotNull { actionFromJson(it) }
-                is kotlinx.serialization.json.JsonObject -> listOfNotNull(actionFromJson(a))
-                else -> if (o.containsKey("action")) listOfNotNull(actionFromJson(o)) else emptyList()
+    fun compactWorldSummary(world: World): String = """
+Boards:
+${context(world.workspace, compact = true)}
+
+Calendar reminders (calendar-only):
+${remindersContext(world.calendarReminders)}
+
+Notes:
+${notesContext(world.notes, compact = true)}
+
+Vault logins:
+${vaultContext(world.vault)}
+
+Money:
+${moneyContext(world)}
+""".trimIndent()
+
+    /**
+     * Parses structured JSON or plain conversational LLM output without ever leaking
+     * raw JSON schema objects or code fences into the chat UI.
+     */
+    fun parseLlmResponse(raw: String): Pair<String, List<Action>> {
+        val cleaned = stripThinkingTags(raw).trim()
+        if (cleaned.isEmpty()) return "" to emptyList()
+
+        // 1. Try direct JSON / fenced JSON / balanced JSON extraction (with repair fallback)
+        for (candidate in jsonCandidates(cleaned)) {
+            val parsed = parseJsonObjectOrArray(candidate)
+            if (parsed != null) {
+                val (reply, actions) = parsed
+                val unwrapped = unwrapNestedReply(reply)
+                // If an inner action object matched inside a truncated outer {"reply": "...", "actions": [...], rescue the outer reply!
+                val rescued = unwrapped.ifBlank {
+                    if (looksLikeStructuredJson(cleaned)) extractReplyFieldFallback(cleaned) else ""
+                }
+                return sanitizeChatReply(rescued) to actions
             }
-            reply to actions
         }
-    } catch (e: Exception) {
-        raw.trim().take(600) to emptyList()
+
+        // 2. Salvage partial/truncated JSON (e.g. model hit max tokens mid-JSON)
+        if (looksLikeStructuredJson(cleaned)) {
+            val salvagedReply = extractReplyFieldFallback(cleaned)
+            val salvagedActions = extractActionsFallback(cleaned)
+            val safeReply = sanitizeChatReply(salvagedReply)
+            return safeReply to salvagedActions
+        }
+
+        // 3. Plain natural-language response: strip any stray embedded JSON/schema fences
+        return sanitizeChatReply(cleaned) to emptyList()
     }
+
+    private fun stripThinkingTags(s: String): String = s
+        .replace(Regex("""<(?:think|thought|reasoning)>[\s\S]*?</(?:think|thought|reasoning)>""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""<\|thought\|>[\s\S]*?<\|/thought\|>""", RegexOption.IGNORE_CASE), "")
+        .trim()
+
+    private fun jsonCandidates(text: String): List<String> {
+        val out = LinkedHashSet<String>()
+        val trimmed = text.trim()
+        out += trimmed
+        // Any markdown fenced blocks
+        Regex("""```(?:json|JSON)?\s*([\s\S]*?)```""").findAll(trimmed).forEach { m ->
+            val inner = m.groupValues[1].trim()
+            if (inner.startsWith("{") || inner.startsWith("[")) out += inner
+        }
+        // Balanced top-level JSON objects / arrays
+        extractBalancedJsonObjects(trimmed).forEach { out += it }
+        // Outermost braces fallback
+        val a = trimmed.indexOf('{'); val b = trimmed.lastIndexOf('}')
+        if (a >= 0 && b > a) out += trimmed.substring(a, b + 1)
+        return out.toList()
+    }
+
+    private fun extractBalancedJsonObjects(s: String): List<String> {
+        val res = mutableListOf<String>()
+        var i = 0
+        while (i < s.length) {
+            val ch = s[i]
+            if (ch == '{' || ch == '[') {
+                val open = ch
+                val close = if (ch == '{') '}' else ']'
+                var depth = 0
+                var inStr = false
+                var escaped = false
+                var j = i
+                while (j < s.length) {
+                    val c = s[j]
+                    if (inStr) {
+                        if (escaped) escaped = false
+                        else if (c == '\\') escaped = true
+                        else if (c == '"') inStr = false
+                    } else {
+                        if (c == '"') inStr = true
+                        else if (c == open) depth++
+                        else if (c == close) {
+                            depth--
+                            if (depth == 0) {
+                                res += s.substring(i, j + 1)
+                                i = j
+                                break
+                            }
+                        }
+                    }
+                    j++
+                }
+            }
+            i++
+        }
+        return res
+    }
+
+    private fun repairJson(candidate: String): String {
+        // Escape raw control newlines inside string literals and drop trailing commas before } or ]
+        val sb = StringBuilder(candidate.length + 16)
+        var inStr = false
+        var escaped = false
+        for (c in candidate) {
+            if (inStr) {
+                when {
+                    escaped -> { sb.append(c); escaped = false }
+                    c == '\\' -> { sb.append(c); escaped = true }
+                    c == '"' -> { sb.append(c); inStr = false }
+                    c == '\n' -> sb.append("\\n")
+                    c == '\r' -> Unit
+                    c == '\t' -> sb.append("\\t")
+                    else -> sb.append(c)
+                }
+            } else {
+                if (c == '"') inStr = true
+                sb.append(c)
+            }
+        }
+        return sb.toString().replace(Regex(""",\s*([}\]])"""), "$1")
+    }
+
+    private fun parseJsonObjectOrArray(candidate: String): Pair<String, List<Action>>? {
+        val el = runCatching { json.parseToJsonElement(candidate) }.getOrNull()
+            ?: runCatching { json.parseToJsonElement(repairJson(candidate)) }.getOrNull()
+            ?: return null
+        if (el is JsonArray) return "" to el.mapNotNull { actionFromJson(it) }
+        val o = el as? kotlinx.serialization.json.JsonObject ?: return null
+        // Reject echoed JSON Schema objects like {"type":"object","properties":{...}}
+        if (isJsonSchemaObject(o)) return "" to emptyList()
+        val reply = (o["reply"] ?: o["message"] ?: o["response"] ?: o["answer"] ?: o["text"])
+            ?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
+            .orEmpty()
+        val actions = when (val a = o["actions"] ?: o["tool_calls"] ?: o["action"]) {
+            is JsonArray -> a.mapNotNull { actionFromJson(it) }
+            is kotlinx.serialization.json.JsonObject -> listOfNotNull(actionFromJson(a))
+            else -> if (o.containsKey("action")) listOfNotNull(actionFromJson(o)) else emptyList()
+        }
+        if (reply.isBlank() && actions.isEmpty() && !o.containsKey("reply") && !o.containsKey("actions")) {
+            return null
+        }
+        return reply to actions
+    }
+
+    private fun isJsonSchemaObject(o: kotlinx.serialization.json.JsonObject): Boolean {
+        val hasSchemaKeys = o.containsKey("\$schema") ||
+            (o.containsKey("properties") && o["type"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() } == "object")
+        return hasSchemaKeys && !o.containsKey("reply") && !o.containsKey("action")
+    }
+
+    private fun unwrapNestedReply(reply: String): String {
+        var cur = reply.trim()
+        repeat(3) {
+            if (!(cur.startsWith("{") && cur.endsWith("}"))) return cur
+            val inner = runCatching { json.parseToJsonElement(repairJson(cur)) as? kotlinx.serialization.json.JsonObject }.getOrNull() ?: return cur
+            if (isJsonSchemaObject(inner)) return ""
+            val next = (inner["reply"] ?: inner["message"] ?: inner["response"] ?: inner["text"])
+                ?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
+                ?: return cur
+            cur = next.trim()
+        }
+        return cur
+    }
+
+    private fun looksLikeStructuredJson(s: String): Boolean {
+        val t = s.trim()
+        return t.startsWith("{") || t.startsWith("```json", true) ||
+            t.contains("\"reply\"") || t.contains("\"actions\"") ||
+            (t.contains("\"properties\"") && t.contains("\"type\""))
+    }
+
+    private fun extractReplyFieldFallback(s: String): String {
+        val m = Regex(""""(?:reply|message|response|answer)"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)""").find(s) ?: return ""
+        return unescapeJsonString(m.groupValues[1]).trim()
+    }
+
+    private fun extractActionsFallback(s: String): List<Action> {
+        val idx = s.indexOf("\"actions\"")
+        if (idx < 0) return emptyList()
+        val slice = s.substring(idx)
+        return extractBalancedJsonObjects(slice).mapNotNull { objStr ->
+            val el = runCatching { json.parseToJsonElement(repairJson(objStr)) }.getOrNull() ?: return@mapNotNull null
+            actionFromJson(el)
+        }
+    }
+
+    private fun unescapeJsonString(raw: String): String {
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val c = raw[i]
+            if (c == '\\' && i + 1 < raw.length) {
+                when (val n = raw[i + 1]) {
+                    'n' -> { sb.append('\n'); i += 2 }
+                    'r' -> { i += 2 }
+                    't' -> { sb.append('\t'); i += 2 }
+                    '"' -> { sb.append('"'); i += 2 }
+                    '\\' -> { sb.append('\\'); i += 2 }
+                    '/' -> { sb.append('/'); i += 2 }
+                    'u' -> if (i + 5 < raw.length) {
+                        val hex = raw.substring(i + 2, i + 6).toIntOrNull(16)
+                        if (hex != null) { sb.append(hex.toChar()); i += 6 } else { sb.append(c); i++ }
+                    } else { sb.append(c); i++ }
+                    else -> { sb.append(n); i += 2 }
+                }
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
+    /** Strips any leaked JSON code fences, raw tool envelopes, or JSON Schema blobs from chat text. */
+    fun sanitizeChatReply(raw: String): String {
+        var s = stripThinkingTags(raw)
+        // Remove fenced JSON blocks that contain Voxban schema/action keys
+        s = Regex("""```(?:json|JSON)?\s*([\s\S]*?)```""").replace(s) { m ->
+            val body = m.groupValues[1]
+            if (body.contains("\"reply\"") || body.contains("\"actions\"") || body.contains("\"action\"") ||
+                body.contains("\"properties\"") || body.contains("\"\$schema\"") || body.contains("\"required\"")
+            ) "" else m.value
+        }
+        // Remove any standalone balanced JSON objects that are Voxban envelopes or JSON schemas
+        val objects = extractBalancedJsonObjects(s)
+        for (obj in objects) {
+            if (obj.contains("\"reply\"") || obj.contains("\"actions\"") || obj.contains("\"action\"") ||
+                (obj.contains("\"properties\"") && obj.contains("\"type\"")) || obj.contains("\"\$schema\"")
+            ) {
+                // If it has a reply field, keep the reply text rather than dropping it completely
+                val inside = runCatching {
+                    val jo = json.parseToJsonElement(repairJson(obj)).jsonObject
+                    if (isJsonSchemaObject(jo)) ""
+                    else (jo["reply"] ?: jo["message"] ?: jo["response"])?.jsonPrimitive?.contentOrNull.orEmpty()
+                }.getOrDefault("")
+                s = s.replace(obj, inside)
+            }
+        }
+        // If truncated JSON envelope still starts the message, drop the broken schema fragment
+        val trimmed = s.trim()
+        if (trimmed.startsWith("{") && (trimmed.contains("\"type\"") || trimmed.contains("\"properties\"") || trimmed.contains("\"actions\"") || trimmed.contains("\"reply\""))) {
+            val rescued = extractReplyFieldFallback(trimmed)
+            return rescued.trim()
+        }
+        return trimmed.replace(Regex("""\n{3,}"""), "\n\n").trim()
+    }
+
+    fun parseNoteDraftJson(raw: String, fallbackRaw: String): NoteDraft? = runCatching {
+        for (cand in jsonCandidates(stripThinkingTags(raw))) {
+            val o = runCatching { json.parseToJsonElement(cand).jsonObject }.getOrNull()
+                ?: runCatching { json.parseToJsonElement(repairJson(cand)).jsonObject }.getOrNull()
+                ?: continue
+            val body = o["body"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            if (body.isNotEmpty()) {
+                return@runCatching NoteDraft(
+                    title = o["title"]?.jsonPrimitive?.contentOrNull?.trim()?.ifEmpty { null } ?: localTitle(fallbackRaw),
+                    body = body,
+                    color = o["color"]?.jsonPrimitive?.contentOrNull,
+                )
+            }
+        }
+        null
+    }.getOrNull()
+
+    private fun parseLlm(raw: String): Pair<String, List<Action>> = parseLlmResponse(raw)
 
     /** Providers want alternating user/assistant turns that start with the user: merge repeats. */
     private fun normalize(turns: List<Turn>): List<Turn> {
@@ -323,6 +585,13 @@ ${moneyContext(world)}
         return out
     }
 
+    private fun naturalFallbackReply(out: Outcome): String = when {
+        out.changes.size == 1 -> "${out.changes.first()}."
+        out.changes.isNotEmpty() -> out.changes.joinToString("\n") { "• $it" }
+        out.failures.isNotEmpty() -> out.failures.first()
+        else -> "Got it! Let me know what else you'd like to do."
+    }
+
     // ------------------------------------------------------------ entry point
 
     suspend fun run(context: Context, input: String, history: List<Turn>, world: World, settings: Settings, apiKey: String): AssistantResult {
@@ -332,11 +601,34 @@ ${moneyContext(world)}
         val noChange = Outcome(ws, emptyList(), emptyList())
 
         when (settings.engine) {
+            Engine.ON_DEVICE -> {
+                val spec = Gemma4Catalog.byId(settings.gemmaModelId)
+                if (Gemma4DownloadManager.readyModelPath(context, spec.id) != null) {
+                    val (reply, actions) = LocalGemmaEngine.runChat(context, spec.id, world, settings, turns, input)
+                    val out = apply(actions)
+                    return AssistantResult(reply.ifBlank { naturalFallbackReply(out) }, out, "${spec.name} · On-device")
+                }
+                // Model not downloaded yet: handle quick offline commands and guide user cleanly
+                offlineAnswer(input, ws, settings)?.let { return AssistantResult(it, noChange, "${spec.name} · Downloading") }
+                offlineWorkspaceActions(input, ws)?.let { acts ->
+                    val out = apply(acts)
+                    if (out.mutated) return AssistantResult(naturalFallbackReply(out), out, "Offline · ${spec.name} pending")
+                }
+                val quick = apply(CommandParser.parse(input, ws.activeBoard))
+                if (quick.mutated) return AssistantResult(naturalFallbackReply(quick), quick, "Offline · ${spec.name} pending")
+                val st = Gemma4DownloadManager.statusFor(spec.id)
+                val statusHint = when (st) {
+                    is GemmaDownloadStatus.Downloading -> "${spec.name} is downloading in the background (${st.percent}%). You can keep using board commands while it finishes."
+                    is GemmaDownloadStatus.Paused -> "${spec.name} download is paused at ${st.percent}%. Open Settings -> AI engine to resume."
+                    else -> "${spec.name} is not downloaded yet. Open Settings -> AI engine to download it in the background for offline AI with all tools."
+                }
+                return AssistantResult(statusHint, noChange, "${spec.name} · Not ready")
+            }
             Engine.OPENAI, Engine.GEMINI, Engine.CLAUDE -> if (apiKey.isNotBlank()) {
                 val raw = CloudProviders.complete(settings.engine, apiKey, settings.cloudModels[settings.engine.name], systemPrompt(world, settings), turns)
                 val (reply, actions) = parseLlm(raw)
                 val out = apply(actions)
-                return AssistantResult(reply.ifBlank { if (out.mutated) "Done." else "Okay." }, out, settings.engine.label)
+                return AssistantResult(reply.ifBlank { naturalFallbackReply(out) }, out, settings.engine.label)
             }
             else -> Unit
         }
@@ -358,7 +650,7 @@ ${moneyContext(world)}
         val fail = out.failures.firstOrNull()
         return AssistantResult(
             if (fail != null && !fail.startsWith("Not sure")) "$fail. Want me to try something else?"
-            else "I can only do simple board commands offline. Add a Gemini, ChatGPT or Claude key in Settings so I can chat, take notes and manage your money and vault.",
+            else "I can only do simple board commands offline. Download Gemma 4 or add a Gemini, ChatGPT or Claude key in Settings so I can chat, take notes and manage your money and vault.",
             out, engine,
         )
     }
@@ -378,6 +670,9 @@ ${moneyContext(world)}
 
     /** Turns scattered words into a tidy note with the chosen AI; falls back to simple local formatting. */
     suspend fun composeNote(context: Context, raw: String, existing: Note?, settings: Settings, apiKey: String): NoteDraft {
+        if (settings.engine == Engine.ON_DEVICE) {
+            LocalGemmaEngine.composeNote(context, settings.gemmaModelId, raw, existing, settings)?.let { return it }
+        }
         val lang = settings.appLanguage
         val system = """
 You turn scattered words, fragments and voice dictation into a beautiful, well-organised note. Write in ${lang.label} (${lang.nativeName}) unless the words are clearly in another language.
@@ -386,17 +681,11 @@ Body rules: light markdown only - "# " section headings, "- " bullets, "- [ ] " 
 """.trimIndent()
         val prompt = if (existing != null) "Rewrite and improve this note, keeping all its facts.\nTitle: ${existing.title}\n${existing.body}\n\nAlso include: $raw" else raw
         val text: String? = runCatching {
-            if (apiKey.isNotBlank() && settings.engine in Engine.selectable)
+            if (apiKey.isNotBlank() && settings.engine in Engine.selectable && settings.engine.needsKey)
                 CloudProviders.complete(settings.engine, apiKey, settings.cloudModels[settings.engine.name], system, listOf(Turn(true, prompt)))
             else null
         }.getOrNull()
-        text?.let { t ->
-            runCatching {
-                val o = json.parseToJsonElement(CloudProviders.stripFences(t)).jsonObject
-                val body = o["body"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-                if (body.isNotEmpty()) return NoteDraft(o["title"]?.jsonPrimitive?.contentOrNull?.trim()?.ifEmpty { null } ?: localTitle(raw), body, o["color"]?.jsonPrimitive?.contentOrNull)
-            }
-        }
+        text?.let { t -> parseNoteDraftJson(t, raw)?.let { return it } }
         return localNote(if (existing != null) existing.body + "\n" + raw else raw, existing?.title)
     }
 

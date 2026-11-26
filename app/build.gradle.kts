@@ -23,8 +23,8 @@ android {
         applicationId = "com.voicekanban.app.native"
         minSdk = 28
         targetSdk = 36
-        versionCode = 14
-        versionName = "3.5.1"
+        versionCode = 15
+        versionName = "3.6.0"
     }
 
     signingConfigs {
@@ -92,6 +92,9 @@ dependencies {
 
     // Claude via the official Anthropic SDK.
     implementation("com.anthropic:anthropic-java:3.12.0")
+
+    // On-device Gemma 4 inference with native tool calling via Google AI Edge LiteRT-LM.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
 
     // Workout music player engine + Media3 playback & disk caching.
     implementation("com.github.MetrolistGroup.innertubex:innertubex:v0.13.1")

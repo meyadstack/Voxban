@@ -165,25 +165,40 @@ object CloudProviders {
     }
 
     private fun gemini(key: String, model: String, system: String, history: List<Turn>, maxTokens: Int): String {
-        val body = buildJsonObject {
-            putJsonObject("systemInstruction") { putJsonArray("parts") { add(buildJsonObject { put("text", system) }) } }
+        fun buildBody(useSystemInstruction: Boolean, jsonMime: Boolean) = buildJsonObject {
+            if (useSystemInstruction) {
+                putJsonObject("systemInstruction") { putJsonArray("parts") { add(buildJsonObject { put("text", system) }) } }
+            }
             putJsonArray("contents") {
                 // Gemini requires the conversation to start with a user turn.
-                history.dropWhile { !it.fromUser }.forEach { t ->
+                val turns = history.dropWhile { !it.fromUser }
+                turns.forEachIndexed { idx, t ->
+                    val content = if (!useSystemInstruction && idx == 0 && t.fromUser) {
+                        "$system\n\nUser request:\n${t.text}"
+                    } else t.text
                     add(buildJsonObject {
                         put("role", if (t.fromUser) "user" else "model")
-                        putJsonArray("parts") { add(buildJsonObject { put("text", t.text) }) }
+                        putJsonArray("parts") { add(buildJsonObject { put("text", content) }) }
                     })
                 }
             }
             putJsonObject("generationConfig") {
-                put("responseMimeType", "application/json")
+                if (jsonMime) put("responseMimeType", "application/json")
                 put("maxOutputTokens", maxOf(maxTokens, 2048)) // thinking models spend tokens before answering
                 put("temperature", 0.2)
             }
         }
         val name = model.removePrefix("models/")
-        val res = post("https://generativelanguage.googleapis.com/v1beta/models/$name:generateContent", body, mapOf("x-goog-api-key" to key))
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$name:generateContent"
+        val headers = mapOf("x-goog-api-key" to key)
+        val isGemma = name.startsWith("gemma", ignoreCase = true)
+        val res = try {
+            post(url, buildBody(useSystemInstruction = !isGemma, jsonMime = !isGemma), headers)
+        } catch (e: CloudException) {
+            if (e.message.orEmpty().contains("HTTP 400")) {
+                post(url, buildBody(useSystemInstruction = false, jsonMime = false), headers)
+            } else throw e
+        }
         val cand = res["candidates"]?.jsonArray?.firstOrNull()?.jsonObject
             ?: throw CloudException("Gemini returned no answer${res["promptFeedback"]?.let { " (blocked: $it)" } ?: ""}.")
         return cand["content"]?.jsonObject?.get("parts")?.jsonArray
@@ -249,8 +264,8 @@ object CloudProviders {
                 .map { it.jsonObject }
                 .filter { m -> m["supportedGenerationMethods"]?.jsonArray?.any { it.jsonPrimitive.contentOrNull == "generateContent" } == true }
                 .mapNotNull { it["name"]?.jsonPrimitive?.contentOrNull?.removePrefix("models/") }
-                .filter { it.startsWith("gemini") && listOf("tts", "image", "embedding", "live", "audio").none { x -> it.contains(x) } }
-                .sortedWith(compareBy<String> { !it.contains("flash") }.thenBy { it.contains("preview") || it.contains("exp") }.thenByDescending { it })
+                .filter { (it.startsWith("gemini") || it.startsWith("gemma-4") || it.startsWith("gemma")) && listOf("tts", "image", "embedding", "live", "audio").none { x -> it.contains(x) } }
+                .sortedWith(compareBy<String> { !it.contains("flash") && !it.startsWith("gemma-4") }.thenBy { it.contains("preview") || it.contains("exp") }.thenByDescending { it })
             Engine.OPENROUTER -> {
                 // Validates the key first (the model list itself is public).
                 get("$OPENROUTER/key", mapOf("Authorization" to "Bearer $key"))

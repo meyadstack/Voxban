@@ -3,7 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
-pub const APP_VERSION: &str = "3.5.1";
+pub const APP_VERSION: &str = "3.6.0";
 pub const SUPPORT_EMAIL: &str = "abdullahmeyad7@gmail.com";
 pub const GITHUB_RELEASES_URL: &str = "https://github.com/meyadstack/Voxban/releases/latest";
 pub const GITHUB_API_LATEST_URL: &str =
@@ -224,6 +224,8 @@ pub struct Note {
     pub pinned: bool,
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub source: String,
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub images: Vec<String>,
     #[serde(default = "now_ms")]
     pub created_at: i64,
     #[serde(default = "now_ms")]
@@ -550,6 +552,8 @@ pub struct Settings {
     pub theme_mode: String,
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub cloud_models: HashMap<String, String>,
+    #[serde(default = "default_gemma_model")]
+    pub gemma_model_id: String,
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub currency: String,
     #[serde(default = "default_weight")]
@@ -568,6 +572,9 @@ fn default_lang() -> String {
 fn default_engine() -> String {
     "GEMINI".into()
 }
+fn default_gemma_model() -> String {
+    "gemma4:e2b".into()
+}
 fn default_theme() -> String {
     "SYSTEM".into()
 }
@@ -584,6 +591,7 @@ impl Default for Settings {
             engine: default_engine(),
             theme_mode: default_theme(),
             cloud_models: HashMap::new(),
+            gemma_model_id: default_gemma_model(),
             currency: "$".into(),
             weight_kg: 70.0,
             auto_check_updates: true,

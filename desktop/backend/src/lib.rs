@@ -69,6 +69,7 @@ mod tests {
             color: 0xFFCFE6FF,
             pinned: false,
             source: String::new(),
+            images: vec![],
             created_at: 1000,
             updated_at: 2000,
         });

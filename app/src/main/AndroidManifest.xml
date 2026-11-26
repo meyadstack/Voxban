@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Focus mode: optional Do Not Disturb -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- In-app GitHub release updater -->
@@ -104,6 +105,10 @@
             android:name=".music.MusicPlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name=".ai.Gemma4DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <receiver android:name=".fitness.WorkoutReminderReceiver" android:exported="false" />
         <receiver android:name=".focus.FocusEndReceiver" android:exported="false" />
 

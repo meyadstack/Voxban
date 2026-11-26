@@ -285,14 +285,14 @@ class VoiceOutput(context: Context) {
         }
 
         /**
-         * Native speakers for [iso] from the ElevenLabs Voice Library (e.g. Bangla voices for "bn"),
-         * most used first.
+         * Free native speakers for [iso] from the ElevenLabs Voice Library (e.g. Bangla voices for "bn"),
+         * most used first. Paid-only voices are filtered out completely.
          */
         suspend fun listLanguageVoices(apiKey: String, iso: String): List<Voice> = withContext(Dispatchers.IO) {
             val key = apiKey.trim()
             require(key.isNotBlank()) { "No ElevenLabs key" }
             val req = Request.Builder()
-                .url("https://api.elevenlabs.io/v1/shared-voices?page_size=40&language=$iso&sort=usage_character_count_1y")
+                .url("https://api.elevenlabs.io/v1/shared-voices?page_size=60&language=$iso&free_users_allowed=true&sort=usage_character_count_1y")
                 .header("xi-api-key", key).build()
             http.newCall(req).execute().use { res ->
                 val text = res.body.string()
@@ -300,6 +300,8 @@ class VoiceOutput(context: Context) {
                 if (!res.isSuccessful) throw IllegalStateException("ElevenLabs HTTP ${res.code}")
                 json.parseToJsonElement(text).jsonObject["voices"]!!.jsonArray.mapNotNull { v ->
                     val o = v.jsonObject
+                    val freeAllowed = isFreeElevenLabsVoice(o)
+                    if (!freeAllowed) return@mapNotNull null
                     val lang = o["language"]?.jsonPrimitive?.contentOrNull.orEmpty()
                     // (language, model, preview) for each language the voice is verified in.
                     val verified = (o["verified_languages"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { x ->
@@ -317,11 +319,28 @@ class VoiceOutput(context: Context) {
                         publicOwnerId = o["public_owner_id"]?.jsonPrimitive?.contentOrNull,
                         language = lang, accent = o["accent"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                         previewUrl = verified.firstOrNull { it.first.equals(iso, true) && it.third != null }?.third ?: o["preview_url"]?.jsonPrimitive?.contentOrNull,
-                        freeAllowed = o["free_users_allowed"]?.jsonPrimitive?.contentOrNull != "false",
+                        freeAllowed = true,
                         models = verified.filter { it.first.equals(iso, true) }.map { it.second },
                     )
-                }.sortedByDescending { it.freeAllowed }
+                }
             }
+        }
+
+        /** Returns true only when an ElevenLabs voice can be used on a free account. */
+        internal fun isFreeElevenLabsVoice(o: kotlinx.serialization.json.JsonObject): Boolean {
+            if (o["free_users_allowed"]?.jsonPrimitive?.contentOrNull.equals("false", true)) return false
+            val sharing = o["sharing"] as? kotlinx.serialization.json.JsonObject
+            if (sharing?.get("free_users_allowed")?.jsonPrimitive?.contentOrNull.equals("false", true)) return false
+            val tiers = o["available_for_tiers"] as? kotlinx.serialization.json.JsonArray
+            if (tiers != null && tiers.isNotEmpty()) {
+                val allowed = tiers.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }
+                if ("free" !in allowed) return false
+            }
+            val category = o["category"]?.jsonPrimitive?.contentOrNull?.lowercase().orEmpty()
+            val explicitlyFree = o["free_users_allowed"]?.jsonPrimitive?.contentOrNull.equals("true", true) ||
+                sharing?.get("free_users_allowed")?.jsonPrimitive?.contentOrNull.equals("true", true)
+            if (category in setOf("professional", "famous", "high_quality") && !explicitlyFree) return false
+            return true
         }
 
         /** Adds a Voice Library voice to the user's account (needed before the API can speak with it); returns its usable id. */
@@ -345,7 +364,7 @@ class VoiceOutput(context: Context) {
         private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** Voices available to the key (premade + the user's own). */
+        /** Free voices available to the key (premade + free user voices; paid-only voices excluded). */
         suspend fun listVoices(apiKey: String): List<Voice> = withContext(Dispatchers.IO) {
             val key = apiKey.trim()
             require(key.isNotBlank()) { "No ElevenLabs key" }
@@ -354,10 +373,17 @@ class VoiceOutput(context: Context) {
                 val text = res.body.string()
                 if (res.code == 401) throw IllegalStateException("ElevenLabs rejected this key - check it and try again.")
                 if (!res.isSuccessful) throw IllegalStateException("ElevenLabs HTTP ${res.code}")
-                json.parseToJsonElement(text).jsonObject["voices"]!!.jsonArray.map { v ->
+                json.parseToJsonElement(text).jsonObject["voices"]!!.jsonArray.mapNotNull { v ->
                     val o = v.jsonObject
+                    if (!isFreeElevenLabsVoice(o)) return@mapNotNull null
                     val name = o["name"]!!.jsonPrimitive.content
-                    Voice(o["voice_id"]!!.jsonPrimitive.content, name.substringBefore(" -").trim(), name.substringAfter("- ", "").trim())
+                    Voice(
+                        id = o["voice_id"]!!.jsonPrimitive.content,
+                        name = name.substringBefore(" -").trim(),
+                        description = name.substringAfter("- ", "").trim(),
+                        previewUrl = o["preview_url"]?.jsonPrimitive?.contentOrNull,
+                        freeAllowed = true,
+                    )
                 }
             }
         }

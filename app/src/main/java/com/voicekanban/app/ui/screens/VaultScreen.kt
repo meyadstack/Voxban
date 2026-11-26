@@ -1,12 +1,16 @@
 package com.voicekanban.app.ui.screens
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PersistableBundle
-import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,25 +23,35 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -46,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,19 +68,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.voicekanban.app.data.PasswordEntry
 import com.voicekanban.app.data.newId
+import com.voicekanban.app.security.ActivePasswordShare
 import com.voicekanban.app.security.BiometricGate
+import com.voicekanban.app.security.PasswordShareManager
+import com.voicekanban.app.security.ReceiveShareResult
+import com.voicekanban.app.security.ShareMode
 import com.voicekanban.app.security.findFragmentActivity
 import com.voicekanban.app.ui.MainViewModel
 import com.voicekanban.app.ui.ToastKind
 import com.voicekanban.app.ui.components.AiAvatar
 import com.voicekanban.app.ui.components.AvatarMood
+import com.voicekanban.app.ui.components.Chip
 import com.voicekanban.app.ui.theme.VK
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val TILE_COLORS = listOf(0xFFEAFF87, 0xFFC8F2DC, 0xFFCFE6FF, 0xFFE3DAFF, 0xFFFFDCC7, 0xFFFFD6E2)
 
-/** Password manager. Entries live in encrypted storage; the screen unlocks with fingerprint / face / screen lock. */
+/** Password manager. Entries live in encrypted storage; supports biometric unlock and one-time QR sharing with friends. */
 @Composable
 fun VaultScreen(vm: MainViewModel) {
     val c = VK.colors
@@ -76,6 +99,8 @@ fun VaultScreen(vm: MainViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var openId by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<PasswordEntry?>(null) }
+    var sharingEntry by remember { mutableStateOf<PasswordEntry?>(null) }
+    var scanShareOpen by remember { mutableStateOf(false) }
 
     fun unlock() {
         val act = ctx.findFragmentActivity()
@@ -93,7 +118,12 @@ fun VaultScreen(vm: MainViewModel) {
             title = "Vault",
             subtitle = "${vault.size} saved login${if (vault.size == 1) "" else "s"} · encrypted on this phone",
             leading = { HeaderButton(Icons.Rounded.Lock, "Lock vault", enabled = unlocked) { vm.vaultUnlocked.value = false } },
-            trailing = { HeaderButton(Icons.Rounded.Add, "New login", enabled = unlocked) { editing = PasswordEntry(newId("p"), "", password = vm.generatePassword()) } },
+            trailing = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HeaderButton(Icons.Rounded.QrCodeScanner, "Scan friend's shared password QR", enabled = unlocked) { scanShareOpen = true }
+                    HeaderButton(Icons.Rounded.Add, "New login", enabled = unlocked) { editing = PasswordEntry(newId("p"), "", password = vm.generatePassword()) }
+                }
+            },
         ) {
             if (unlocked) InputField(query, { query = it }, "Search logins", leading = Icons.Rounded.Search)
         }
@@ -119,7 +149,7 @@ fun VaultScreen(vm: MainViewModel) {
                 Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     AiAvatar(AvatarMood.IDLE, Modifier.size(110.dp), interactive = true)
                     Text("No saved logins yet", style = MaterialTheme.typography.titleLarge, color = c.ink)
-                    Text("Tap + or just tell the assistant: “Save my Gmail login, username sam@mail.com, make a strong password.”", color = c.inkSecondary, textAlign = TextAlign.Center, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                    Text("Tap +, scan a friend's one-time QR, or tell the assistant: “Save my Gmail login with a strong password.”", color = c.inkSecondary, textAlign = TextAlign.Center, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                 }
             }
             items(list, key = { it.id }) { e ->
@@ -134,6 +164,9 @@ fun VaultScreen(vm: MainViewModel) {
                         Text(e.title, style = MaterialTheme.typography.titleMedium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(e.username.ifBlank { e.url.ifBlank { "No username" } }, fontSize = 13.sp, color = c.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    Box(Modifier.size(40.dp).clip(CircleShape).clickable { sharingEntry = e }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.QrCode2, "Share via 1-time QR", tint = c.inkSecondary, modifier = Modifier.size(19.dp))
+                    }
                     Box(Modifier.size(40.dp).clip(CircleShape).clickable { copySecret(ctx, "Password", e.password); vm.showToast(ToastKind.SUCCESS, "Password copied", "Clears from the clipboard in 45 s") }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Rounded.ContentCopy, "Copy password", tint = c.inkSecondary, modifier = Modifier.size(18.dp))
                     }
@@ -142,8 +175,361 @@ fun VaultScreen(vm: MainViewModel) {
         }
     }
 
-    openId?.let { id -> vault.firstOrNull { it.id == id }?.let { e -> EntrySheet(vm, e, onDismiss = { openId = null }, onEdit = { openId = null; editing = e }) } }
+    openId?.let { id ->
+        vault.firstOrNull { it.id == id }?.let { e ->
+            EntrySheet(
+                vm = vm,
+                e = e,
+                onDismiss = { openId = null },
+                onEdit = { openId = null; editing = e },
+                onShareQr = { openId = null; sharingEntry = e },
+            )
+        }
+    }
     editing?.let { e -> EntryEditor(vm, e, onDismiss = { editing = null }) }
+    sharingEntry?.let { e -> SharePasswordQrSheet(e, onDismiss = { sharingEntry = null }) }
+    if (scanShareOpen) ReceivePasswordQrSheet(vm, onDismiss = { scanShareOpen = false })
+}
+
+/** Displays a single-use encrypted QR code with live countdown & instant-burn status. */
+@Composable
+private fun SharePasswordQrSheet(entry: PasswordEntry, onDismiss: () -> Unit) {
+    val c = VK.colors
+    val ctx = LocalContext.current
+    val hasWifiLan = remember { PasswordShareManager.detectLanIpv4() != null }
+    var mode by remember { mutableStateOf(if (hasWifiLan) ShareMode.LAN_INSTANT_BURN else ShareMode.OFFLINE_TIMED) }
+    var ttlSec by remember { mutableIntStateOf(120) }
+    var burned by remember { mutableStateOf(false) }
+    var claimedByFriend by remember { mutableStateOf(false) }
+    var remainingSec by remember { mutableIntStateOf(120) }
+    var share by remember { mutableStateOf<ActivePasswordShare?>(null) }
+
+    fun regenerate() {
+        share?.burn()
+        burned = false
+        claimedByFriend = false
+        val created = PasswordShareManager.createShare(
+            entry = entry,
+            preferredMode = mode,
+            ttlSeconds = ttlSec,
+            onBurned = {
+                claimedByFriend = true
+                burned = true
+            },
+        )
+        share = created
+        remainingSec = ttlSec
+    }
+
+    LaunchedEffect(mode, ttlSec) { regenerate() }
+
+    DisposableEffect(Unit) {
+        onDispose { share?.burn() }
+    }
+
+    LaunchedEffect(share?.shareId, burned) {
+        val current = share ?: return@LaunchedEffect
+        while (!burned) {
+            val left = ((current.expiresAt - System.currentTimeMillis()) / 1000L).toInt().coerceAtLeast(0)
+            remainingSec = left
+            if (current.isClaimed) {
+                claimedByFriend = true
+                burned = true
+                break
+            }
+            if (left <= 0) {
+                current.burn()
+                burned = true
+                break
+            }
+            delay(400)
+        }
+    }
+
+    AppSheet(
+        title = "Share “${entry.title}”",
+        subtitle = "Encrypted one-time QR code for a friend's Voxban Vault",
+        onDismiss = { share?.burn(); onDismiss() },
+    ) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill("Same Wi-Fi", mode == ShareMode.LAN_INSTANT_BURN, Modifier.weight(1f), Icons.Rounded.Wifi) {
+                if (hasWifiLan) mode = ShareMode.LAN_INSTANT_BURN
+            }
+            Pill("Any Network", mode == ShareMode.OFFLINE_TIMED, Modifier.weight(1f), Icons.Rounded.WifiOff) {
+                mode = ShareMode.OFFLINE_TIMED
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Timer, null, tint = c.inkTertiary, modifier = Modifier.size(15.dp))
+            Text("Expires in:", fontSize = 12.sp, color = c.inkSecondary)
+            Chip("2 min", selected = ttlSec == 120) { ttlSec = 120 }
+            Chip("5 min", selected = ttlSec == 300) { ttlSec = 300 }
+        }
+
+        if (burned) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                    .background(if (claimedByFriend) c.lowSoft else c.surface)
+                    .border(1.dp, if (claimedByFriend) c.low else c.border, RoundedCornerShape(24.dp))
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    if (claimedByFriend) Icons.Rounded.CheckCircle else Icons.Rounded.LocalFireDepartment,
+                    null,
+                    tint = if (claimedByFriend) c.low else c.medium,
+                    modifier = Modifier.size(44.dp),
+                )
+                Text(
+                    if (claimedByFriend) "Claimed & Burned!" else "One-Time QR Burned",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = c.ink,
+                )
+                Text(
+                    if (claimedByFriend) "Your friend scanned “${entry.title}” and this QR code was automatically destroyed."
+                    else "This one-time QR code has expired or was manually burned and can no longer be used.",
+                    fontSize = 13.sp,
+                    color = c.inkSecondary,
+                    textAlign = TextAlign.Center,
+                )
+                Button(
+                    onClick = ::regenerate,
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
+                ) {
+                    Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Generate new 1-time QR")
+                }
+            }
+        } else {
+            val active = share
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White)
+                    .border(1.dp, c.border, RoundedCornerShape(24.dp)).padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                active?.let {
+                    Image(
+                        bitmap = it.qrBitmap.asImageBitmap(),
+                        contentDescription = "One-time password QR code",
+                        modifier = Modifier.size(230.dp),
+                    )
+                }
+                val mins = remainingSec / 60
+                val secs = remainingSec % 60
+                Row(
+                    Modifier.clip(CircleShape).background(Color(0xFFEAFF87)).padding(horizontal = 12.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Rounded.Timer, null, tint = Color(0xFF1B201C), modifier = Modifier.size(14.dp))
+                    Text(
+                        "One-time QR · expires in %d:%02d".format(mins, secs),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1B201C),
+                    )
+                }
+                Text(
+                    if (active?.mode == ShareMode.LAN_INSTANT_BURN)
+                        "AES-256-GCM encrypted. Auto-destroys on the very first scan over Wi-Fi."
+                    else
+                        "AES-256-GCM encrypted. Works offline on any network, expires automatically, and can only be imported once.",
+                    fontSize = 11.sp,
+                    color = Color(0xFF4A5568),
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        active?.qrText?.let { copySecret(ctx, "One-time share link", it, sensitive = true) }
+                    },
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Copy code", fontSize = 13.sp)
+                }
+                Button(
+                    onClick = {
+                        share?.burn()
+                        burned = true
+                    },
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.dangerSoft, contentColor = c.danger),
+                ) {
+                    Icon(Icons.Rounded.LocalFireDepartment, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Burn Now", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+private enum class ReceiveTab { SCAN, PASTE }
+
+/** Scans or pastes a friend's one-time password share QR and imports it into the encrypted Vault. */
+@Composable
+private fun ReceivePasswordQrSheet(vm: MainViewModel, onDismiss: () -> Unit) {
+    val c = VK.colors
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var tab by remember { mutableStateOf(ReceiveTab.SCAN) }
+    var pasteInput by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var scanPaused by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var received by remember { mutableStateOf<ReceiveShareResult.Success?>(null) }
+
+    var hasCameraPerm by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    val camLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        hasCameraPerm = ok
+        if (!ok) errorMsg = "Camera permission is needed to scan QR codes (or switch to Paste Code)."
+    }
+
+    fun processQr(raw: String) {
+        if (busy) return
+        busy = true
+        scanPaused = true
+        errorMsg = null
+        scope.launch {
+            val res = PasswordShareManager.receiveShare(
+                rawQr = raw,
+                isAlreadyConsumed = { vm.repo.isPasswordShareConsumed(it) },
+                markConsumed = { vm.repo.markPasswordShareConsumed(it) },
+            )
+            when (res) {
+                is ReceiveShareResult.Success -> received = res
+                is ReceiveShareResult.Error -> errorMsg = res.message
+            }
+            busy = false
+        }
+    }
+
+    AppSheet(
+        title = "Receive Shared Password",
+        subtitle = "Scan your friend's one-time QR code to save directly into your Vault",
+        onDismiss = onDismiss,
+    ) {
+        val got = received
+        if (got != null) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.lowSoft)
+                    .border(1.dp, c.low.copy(alpha = 0.35f), RoundedCornerShape(22.dp)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = c.low)
+                    Text(
+                        if (got.burnedOnSender) "Decrypted & burned on sender!" else "One-time QR decrypted!",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = c.ink,
+                    )
+                }
+                Text("Site: ${got.entry.title}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
+                if (got.entry.username.isNotBlank()) Text("Username: ${got.entry.username}", fontSize = 13.sp, color = c.inkSecondary)
+                if (got.entry.url.isNotBlank()) Text("URL: ${got.entry.url}", fontSize = 12.sp, color = c.inkSecondary)
+                Text("Password: ${"•".repeat(got.entry.password.length.coerceIn(8, 16))}", fontSize = 13.sp, color = c.inkSecondary)
+                Button(
+                    onClick = {
+                        vm.saveEntry(got.entry)
+                        vm.showToast(ToastKind.SUCCESS, "Saved shared login", got.entry.title)
+                        onDismiss()
+                    },
+                    modifier = Modifier.padding(top = 8.dp).fillMaxWidth().height(50.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
+                ) { Text("Save to My Vault", fontWeight = FontWeight.SemiBold) }
+            }
+            return@AppSheet
+        }
+
+        errorMsg?.let { err ->
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(14.dp)).background(c.dangerSoft).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Rounded.ErrorOutline, null, tint = c.danger, modifier = Modifier.size(18.dp))
+                Text(err, fontSize = 12.sp, color = c.danger)
+            }
+        }
+
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill("Scan QR", tab == ReceiveTab.SCAN, Modifier.weight(1f), Icons.Rounded.QrCodeScanner) { tab = ReceiveTab.SCAN }
+            Pill("Paste Code", tab == ReceiveTab.PASTE, Modifier.weight(1f), Icons.Rounded.Keyboard) { tab = ReceiveTab.PASTE }
+        }
+
+        when (tab) {
+            ReceiveTab.SCAN -> {
+                if (!hasCameraPerm) {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.surface)
+                            .border(1.dp, c.border, RoundedCornerShape(20.dp)).padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Rounded.QrCodeScanner, null, tint = c.accent, modifier = Modifier.size(38.dp))
+                        Text("Allow camera to scan friend's QR", style = MaterialTheme.typography.titleMedium, color = c.ink)
+                        Button(
+                            onClick = { camLauncher.launch(Manifest.permission.CAMERA) },
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                        ) { Text("Allow Camera") }
+                    }
+                } else {
+                    Box(
+                        Modifier.fillMaxWidth().aspectRatio(1.1f).clip(RoundedCornerShape(22.dp))
+                            .background(Color.Black).border(2.dp, c.limeTile, RoundedCornerShape(22.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        QrCameraPreview(
+                            enabled = !busy && !scanPaused,
+                            onQrDetected = { raw -> processQr(raw) },
+                        )
+                        Box(Modifier.size(190.dp).border(2.5.dp, c.limeTile.copy(alpha = 0.85f), RoundedCornerShape(24.dp)))
+                        if (busy) {
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = c.limeTile)
+                            }
+                        } else if (scanPaused) {
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                                Button(
+                                    onClick = { scanPaused = false; errorMsg = null },
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+                                ) { Text("Scan Again", fontWeight = FontWeight.SemiBold) }
+                            }
+                        }
+                    }
+                }
+            }
+            ReceiveTab.PASTE -> {
+                InputField(pasteInput, { pasteInput = it; errorMsg = null }, "Paste voxban://pwshare?... code")
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { processQr(pasteInput) },
+                    enabled = pasteInput.isNotBlank() && !busy,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised),
+                ) {
+                    if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = c.raised)
+                    else Text("Claim & Decrypt", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
 }
 
 /** Prompts the user to make Voxban the phone's autofill service (save + suggest passwords everywhere). */
@@ -193,7 +579,7 @@ private fun EntryTile(e: PasswordEntry, size: Int) {
 }
 
 @Composable
-private fun EntrySheet(vm: MainViewModel, e: PasswordEntry, onDismiss: () -> Unit, onEdit: () -> Unit) {
+private fun EntrySheet(vm: MainViewModel, e: PasswordEntry, onDismiss: () -> Unit, onEdit: () -> Unit, onShareQr: () -> Unit) {
     val c = VK.colors
     val ctx = LocalContext.current
     var reveal by remember { mutableStateOf(false) }
@@ -211,7 +597,17 @@ private fun EntrySheet(vm: MainViewModel, e: PasswordEntry, onDismiss: () -> Uni
         )
         if (e.url.isNotBlank()) Field(Icons.Rounded.Language, "Website", e.url)
         if (e.notes.isNotBlank()) Field(Icons.Rounded.Notes, "Notes", e.notes)
-        Row(Modifier.padding(top = 14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button(
+            onClick = onShareQr,
+            modifier = Modifier.padding(top = 14.dp).fillMaxWidth().height(50.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = c.limeTile, contentColor = c.onLime),
+        ) {
+            Icon(Icons.Rounded.QrCode2, null, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Share via One-Time QR Code", fontWeight = FontWeight.SemiBold)
+        }
+        Row(Modifier.padding(top = 10.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onEdit, Modifier.weight(1f).height(50.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.raised)) {
                 Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit")
             }
